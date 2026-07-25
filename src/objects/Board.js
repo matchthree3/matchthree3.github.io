@@ -97,94 +97,145 @@ export default class Board extends Phaser.GameObjects.Container {
         const posB = { x: tileB.x, y: tileB.y };
 
         this.scene.tweens.add({
-            targets: tileA,
-            x: posB.x,
-            y: posB.y,
-            duration: 200
+            targets: tileA, x: posB.x, y: posB.y, duration: 200
         });
 
         this.scene.tweens.add({
-            targets: tileB,
-            x: posA.x,
-            y: posA.y,
-            duration: 200,
+            targets: tileB, x: posA.x, y: posA.y, duration: 200,
             onComplete: () => {
-                const matches = this.checkMatches();
-                if (matches.length > 0) {
-                    this.clearMatches(matches);
+                if (tileA.specialType === 'rainbow' || tileB.specialType === 'rainbow') {
+                    this.triggerRainbow(tileA, tileB);
+                    return;
+                }
+
+                const matchesResult = this.checkMatchesDetailed();
+                if (matchesResult.tiles.length > 0) {
+                    this.clearMatches(matchesResult);
                 } else {
                     this.grid[rA][cA] = tileA;
                     this.grid[rB][cB] = tileB;
                     tileA.row = rA; tileA.col = cA;
                     tileB.row = rB; tileB.col = cB;
 
+                    this.scene.tweens.add({ targets: tileA, x: posA.x, y: posA.y, duration: 200 });
                     this.scene.tweens.add({
-                        targets: tileA,
-                        x: posA.x,
-                        y: posA.y,
-                        duration: 200
-                    });
-
-                    this.scene.tweens.add({
-                        targets: tileB,
-                        x: posB.x,
-                        y: posB.y,
-                        duration: 200,
-                        onComplete: () => {
-                            this.isBusy = false;
-                        }
+                        targets: tileB, x: posB.x, y: posB.y, duration: 200,
+                        onComplete: () => { this.isBusy = false; }
                     });
                 }
             }
         });
     }
 
-    checkMatches() {
-        const matchedTiles = new Set();
+    triggerRainbow(rainbowTile, otherTile) {
+        const targetColor = otherTile.colorType;
+        const toClear = [rainbowTile];
 
         for (let r = 0; r < this.rows; r++) {
-            for (let c = 0; c < this.cols - 2; c++) {
-                const t1 = this.grid[r][c];
-                const t2 = this.grid[r][c + 1];
-                const t3 = this.grid[r][c + 2];
+            for (let c = 0; c < this.cols; c++) {
+                const t = this.grid[r][c];
+                if (t && t.colorType === targetColor) {
+                    toClear.push(t);
+                }
+            }
+        }
 
-                if (t1 && t2 && t3 && t1.colorType === t2.colorType && t1.colorType === t3.colorType) {
-                    matchedTiles.add(t1);
-                    matchedTiles.add(t2);
-                    matchedTiles.add(t3);
+        this.clearMatches({ tiles: toClear, spawnSpecials: [] });
+    }
+
+    checkMatchesDetailed() {
+        const matchedTiles = new Set();
+        const spawnSpecials = [];
+
+        for (let r = 0; r < this.rows; r++) {
+            let matchLen = 1;
+            for (let c = 0; c < this.cols; c++) {
+                const checkNext = (c < this.cols - 1) && this.grid[r][c] && this.grid[r][c + 1] &&
+                    (this.grid[r][c].colorType === this.grid[r][c + 1].colorType);
+
+                if (checkNext) {
+                    matchLen++;
+                } else {
+                    if (matchLen >= 3) {
+                        for (let i = 0; i < matchLen; i++) {
+                            matchedTiles.add(this.grid[r][c - i]);
+                        }
+                        if (matchLen === 4) {
+                            spawnSpecials.push({ row: r, col: c - Math.floor(matchLen / 2), type: 'row_rocket', color: this.grid[r][c].colorType });
+                        } else if (matchLen >= 5) {
+                            spawnSpecials.push({ row: r, col: c - Math.floor(matchLen / 2), type: 'rainbow', color: 'rainbow' });
+                        }
+                    }
+                    matchLen = 1;
                 }
             }
         }
 
         for (let c = 0; c < this.cols; c++) {
-            for (let r = 0; r < this.rows - 2; r++) {
-                const t1 = this.grid[r][c];
-                const t2 = this.grid[r + 1][c];
-                const t3 = this.grid[r + 2][c];
+            let matchLen = 1;
+            for (let r = 0; r < this.rows; r++) {
+                const checkNext = (r < this.rows - 1) && this.grid[r][c] && this.grid[r + 1][c] &&
+                    (this.grid[r][c].colorType === this.grid[r + 1][c].colorType);
 
-                if (t1 && t2 && t3 && t1.colorType === t2.colorType && t1.colorType === t3.colorType) {
-                    matchedTiles.add(t1);
-                    matchedTiles.add(t2);
-                    matchedTiles.add(t3);
+                if (checkNext) {
+                    matchLen++;
+                } else {
+                    if (matchLen >= 3) {
+                        for (let i = 0; i < matchLen; i++) {
+                            matchedTiles.add(this.grid[r - i][c]);
+                        }
+                        if (matchLen === 4) {
+                            spawnSpecials.push({ row: r - Math.floor(matchLen / 2), col: c, type: 'col_rocket', color: this.grid[r][c].colorType });
+                        } else if (matchLen >= 5) {
+                            spawnSpecials.push({ row: r - Math.floor(matchLen / 2), col: c, type: 'rainbow', color: 'rainbow' });
+                        }
+                    }
+                    matchLen = 1;
                 }
             }
         }
 
-        return Array.from(matchedTiles);
+        const expanded = new Set(matchedTiles);
+        matchedTiles.forEach(tile => {
+            if (tile.specialType === 'row_rocket') {
+                for (let c = 0; c < this.cols; c++) if (this.grid[tile.row][c]) expanded.add(this.grid[tile.row][c]);
+            } else if (tile.specialType === 'col_rocket') {
+                for (let r = 0; r < this.rows; r++) if (this.grid[r][tile.col]) expanded.add(this.grid[r][tile.col]);
+            } else if (tile.specialType === 'bomb') {
+                for (let r = Math.max(0, tile.row - 1); r <= Math.min(this.rows - 1, tile.row + 1); r++) {
+                    for (let c = Math.max(0, tile.col - 1); c <= Math.min(this.cols - 1, tile.col + 1); c++) {
+                        if (this.grid[r][c]) expanded.add(this.grid[r][c]);
+                    }
+                }
+            }
+        });
+
+        return { tiles: Array.from(expanded), spawnSpecials };
     }
 
-    clearMatches(matches) {
+    clearMatches(matchesResult) {
+        const matches = matchesResult.tiles;
+
         this.scene.tweens.add({
             targets: matches,
-            scaleX: 0,
-            scaleY: 0,
-            alpha: 0,
-            duration: 200,
+            scaleX: 0, scaleY: 0, alpha: 0, duration: 200,
             onComplete: () => {
                 matches.forEach(tile => {
                     this.grid[tile.row][tile.col] = null;
                     tile.destroy();
                 });
+
+                if (matchesResult.spawnSpecials) {
+                    matchesResult.spawnSpecials.forEach(sp => {
+                        const posX = this.offsetX + sp.col * (this.tileSize + this.spacing);
+                        const posY = this.offsetY + sp.row * (this.tileSize + this.spacing);
+                        const newTile = new Tile(this.scene, posX, posY, `tile_${sp.color === 'rainbow' ? 'red' : sp.color}`, sp.row, sp.col);
+                        newTile.setSpecial(sp.type);
+                        this.add(newTile);
+                        this.grid[sp.row][sp.col] = newTile;
+                    });
+                }
+
                 this.dropAndRefill();
             }
         });
@@ -208,13 +259,7 @@ export default class Board extends Phaser.GameObjects.Container {
                     tile.row = targetRow;
 
                     const targetY = this.offsetY + targetRow * (this.tileSize + this.spacing);
-
-                    dropTweens.push({
-                        targets: tile,
-                        y: targetY,
-                        duration: 250,
-                        ease: 'Bounce.easeOut'
-                    });
+                    dropTweens.push({ targets: tile, y: targetY, duration: 250, ease: 'Bounce.easeOut' });
                 }
             }
 
@@ -230,12 +275,7 @@ export default class Board extends Phaser.GameObjects.Container {
                 this.add(tile);
                 this.grid[targetRow][col] = tile;
 
-                dropTweens.push({
-                    targets: tile,
-                    y: targetY,
-                    duration: 250,
-                    ease: 'Bounce.easeOut'
-                });
+                dropTweens.push({ targets: tile, y: targetY, duration: 250, ease: 'Bounce.easeOut' });
             }
         }
 
@@ -247,9 +287,9 @@ export default class Board extends Phaser.GameObjects.Container {
                     onComplete: () => {
                         completed++;
                         if (completed === dropTweens.length) {
-                            const newMatches = this.checkMatches();
-                            if (newMatches.length > 0) {
-                                this.clearMatches(newMatches);
+                            const newMatchesResult = this.checkMatchesDetailed();
+                            if (newMatchesResult.tiles.length > 0) {
+                                this.clearMatches(newMatchesResult);
                             } else {
                                 this.isBusy = false;
                             }
