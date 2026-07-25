@@ -8,19 +8,31 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.row = row;
         this.col = col;
         this.colorType = texture.replace('tile_', '');
+        this.specialType = 'none';
 
-        // 核心修正：計算原圖尺寸與目標尺寸(64px)的比例進行高畫質縮放
         const targetSize = 64;
         this.baseScale = targetSize / Math.max(this.width, this.height);
         this.setScale(this.baseScale);
 
         this.setInteractive();
-        
         this.scene.input.setDraggable(this);
 
         this.on('pointerdown', this.onPointerDown, this);
         this.on('dragstart', this.onDragStart, this);
         this.on('dragend', this.onDragEnd, this);
+    }
+
+    setSpecial(type) {
+        this.specialType = type;
+        if (type === 'row_rocket' || type === 'col_rocket') {
+            this.setTint(0xffffff);
+            this.setAlpha(0.9);
+        } else if (type === 'bomb') {
+            this.setTint(0xffaa00);
+        } else if (type === 'rainbow') {
+            this.setTint(0xff00ff);
+            this.colorType = 'rainbow';
+        }
     }
 
     onPointerDown() {
