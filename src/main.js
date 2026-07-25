@@ -11,6 +11,11 @@ const config = {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH
     },
+    render: {
+        antialias: true,
+        pixelArt: false,
+        roundPixels: true
+    },
     backgroundColor: '#302c34',
     scene: [BootScene, GameScene]
 };
