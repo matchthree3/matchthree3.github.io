@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/matchthree3/',
+  base: '/',
   build: {
     assetsInlineLimit: 0,
   },
