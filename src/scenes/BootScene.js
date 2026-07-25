@@ -6,21 +6,13 @@ export default class BootScene extends Phaser.Scene {
     }
 
     preload() {
-        const colors = {
-            'red': 0xff4d4d,
-            'blue': 0x4d94ff,
-            'green': 0x4dff4d,
-            'yellow': 0xffff4d,
-            'purple': 0xff4dff
-        };
-
-        for (const [key, color] of Object.entries(colors)) {
-            const graphics = this.add.graphics();
-            graphics.fillStyle(color, 1);
-            graphics.fillRoundedRect(0, 0, 64, 64, 16);
-            graphics.generateTexture(`tile_${key}`, 64, 64);
-            graphics.destroy();
-        }
+        // --- 修改這裡：載入你上傳的真實軟糖圖片 ---
+        this.load.image('tile_red', 'assets/tile_red.png');
+        this.load.image('tile_blue', 'assets/tile_blue.png');
+        this.load.image('tile_yellow', 'assets/tile_yellow.png');
+        this.load.image('tile_green', 'assets/tile_green.png');
+        this.load.image('tile_purple', 'assets/tile_purple.png');
+        // ----------------------------------------------------
     }
 
     create() {
