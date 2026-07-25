@@ -12,30 +12,29 @@ export default class Board extends Phaser.GameObjects.Container {
         this.spacing = 4;
         this.grid = [];
         this.selectedTile = null;
-        this.isBusy = false; // 播放動畫時禁止操作
+        this.isBusy = false;
+
+        this.colors = ['red', 'blue', 'green', 'yellow', 'purple'];
+        this.offsetX = -((this.cols * (this.tileSize + this.spacing)) / 2) + (this.tileSize / 2);
+        this.offsetY = -((this.rows * (this.tileSize + this.spacing)) / 2) + (this.tileSize / 2);
 
         this.createGrid();
     }
 
     createGrid() {
-        const colors = ['red', 'blue', 'green', 'yellow', 'purple'];
-        const offsetX = -((this.cols * (this.tileSize + this.spacing)) / 2) + (this.tileSize / 2);
-        const offsetY = -((this.rows * (this.tileSize + this.spacing)) / 2) + (this.tileSize / 2);
-
         for (let row = 0; row < this.rows; row++) {
             this.grid[row] = [];
             for (let col = 0; col < this.cols; col++) {
                 let randomColor;
-                // 初始生成時避免直接出現 3 連線
                 do {
-                    randomColor = Phaser.Math.RND.pick(colors);
+                    randomColor = Phaser.Math.RND.pick(this.colors);
                 } while (
                     (col >= 2 && this.grid[row][col - 1].colorType === randomColor && this.grid[row][col - 2].colorType === randomColor) ||
                     (row >= 2 && this.grid[row - 1][col].colorType === randomColor && this.grid[row - 2][col].colorType === randomColor)
                 );
 
-                const posX = offsetX + col * (this.tileSize + this.spacing);
-                const posY = offsetY + row * (this.tileSize + this.spacing);
+                const posX = this.offsetX + col * (this.tileSize + this.spacing);
+                const posY = this.offsetY + row * (this.tileSize + this.spacing);
 
                 const tile = new Tile(this.scene, posX, posY, `tile_${randomColor}`, row, col);
                 this.add(tile);
@@ -46,15 +45,12 @@ export default class Board extends Phaser.GameObjects.Container {
 
     selectTile(tile) {
         if (!this.selectedTile) {
-            // 第一次點擊：選取
             this.selectedTile = tile;
             tile.setSelected(true);
         } else if (this.selectedTile === tile) {
-            // 點擊同一個：取消選取
             this.selectedTile.setSelected(false);
             this.selectedTile = null;
         } else {
-            // 點擊第二個：檢查是否相鄰
             const isNeighbor = (Math.abs(this.selectedTile.row - tile.row) + Math.abs(this.selectedTile.col - tile.col)) === 1;
 
             if (isNeighbor) {
@@ -64,7 +60,6 @@ export default class Board extends Phaser.GameObjects.Container {
                 this.selectedTile = null;
                 this.swapTiles(tileA, tileB);
             } else {
-                // 不相鄰，改選新點擊的方塊
                 this.selectedTile.setSelected(false);
                 this.selectedTile = tile;
                 tile.setSelected(true);
@@ -72,10 +67,23 @@ export default class Board extends Phaser.GameObjects.Container {
         }
     }
 
+    handleDragSwap(tile, targetRow, targetCol) {
+        if (this.selectedTile) {
+            this.selectedTile.setSelected(false);
+            this.selectedTile = null;
+        }
+
+        if (targetRow >= 0 && targetRow < this.rows && targetCol >= 0 && targetCol < this.cols) {
+            const targetTile = this.grid[targetRow][targetCol];
+            if (targetTile) {
+                this.swapTiles(tile, targetTile);
+            }
+        }
+    }
+
     swapTiles(tileA, tileB) {
         this.isBusy = true;
 
-        // 更新網陣中的位置紀錄
         const rA = tileA.row, cA = tileA.col;
         const rB = tileB.row, cB = tileB.col;
 
@@ -85,26 +93,26 @@ export default class Board extends Phaser.GameObjects.Container {
         tileA.row = rB; tileA.col = cB;
         tileB.row = rA; tileB.col = cA;
 
-        // 位移動畫
+        const posA = { x: tileA.x, y: tileA.y };
+        const posB = { x: tileB.x, y: tileB.y };
+
         this.scene.tweens.add({
             targets: tileA,
-            x: tileB.x,
-            y: tileB.y,
+            x: posB.x,
+            y: posB.y,
             duration: 200
         });
 
         this.scene.tweens.add({
             targets: tileB,
-            x: tileA.x,
-            y: tileA.y,
+            x: posA.x,
+            y: posA.y,
             duration: 200,
             onComplete: () => {
                 const matches = this.checkMatches();
                 if (matches.length > 0) {
-                    // 有連線成功
                     this.clearMatches(matches);
                 } else {
-                    // 無連線：彈回原位
                     this.grid[rA][cA] = tileA;
                     this.grid[rB][cB] = tileB;
                     tileA.row = rA; tileA.col = cA;
@@ -112,15 +120,15 @@ export default class Board extends Phaser.GameObjects.Container {
 
                     this.scene.tweens.add({
                         targets: tileA,
-                        x: tileB.x,
-                        y: tileB.y,
+                        x: posA.x,
+                        y: posA.y,
                         duration: 200
                     });
 
                     this.scene.tweens.add({
                         targets: tileB,
-                        x: tileA.x,
-                        y: tileA.y,
+                        x: posB.x,
+                        y: posB.y,
                         duration: 200,
                         onComplete: () => {
                             this.isBusy = false;
@@ -134,7 +142,6 @@ export default class Board extends Phaser.GameObjects.Container {
     checkMatches() {
         const matchedTiles = new Set();
 
-        // 檢查橫向
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols - 2; c++) {
                 const t1 = this.grid[r][c];
@@ -149,7 +156,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 檢查直向
         for (let c = 0; c < this.cols; c++) {
             for (let r = 0; r < this.rows - 2; r++) {
                 const t1 = this.grid[r][c];
@@ -168,21 +174,91 @@ export default class Board extends Phaser.GameObjects.Container {
     }
 
     clearMatches(matches) {
-        // 縮小淡出消除動畫
         this.scene.tweens.add({
             targets: matches,
             scaleX: 0,
             scaleY: 0,
             alpha: 0,
-            duration: 250,
+            duration: 200,
             onComplete: () => {
                 matches.forEach(tile => {
                     this.grid[tile.row][tile.col] = null;
                     tile.destroy();
                 });
-                this.isBusy = false;
-                // 下一步：消除後掉落補位與分數計算
+                this.dropAndRefill();
             }
         });
+    }
+
+    dropAndRefill() {
+        const dropTweens = [];
+
+        for (let col = 0; col < this.cols; col++) {
+            let emptySlots = 0;
+
+            for (let row = this.rows - 1; row >= 0; row--) {
+                if (this.grid[row][col] === null) {
+                    emptySlots++;
+                } else if (emptySlots > 0) {
+                    const tile = this.grid[row][col];
+                    const targetRow = row + emptySlots;
+
+                    this.grid[targetRow][col] = tile;
+                    this.grid[row][col] = null;
+                    tile.row = targetRow;
+
+                    const targetY = this.offsetY + targetRow * (this.tileSize + this.spacing);
+
+                    dropTweens.push({
+                        targets: tile,
+                        y: targetY,
+                        duration: 250,
+                        ease: 'Bounce.easeOut'
+                    });
+                }
+            }
+
+            for (let i = 0; i < emptySlots; i++) {
+                const targetRow = emptySlots - 1 - i;
+                const randomColor = Phaser.Math.RND.pick(this.colors);
+
+                const posX = this.offsetX + col * (this.tileSize + this.spacing);
+                const startY = this.offsetY - (i + 1) * (this.tileSize + this.spacing);
+                const targetY = this.offsetY + targetRow * (this.tileSize + this.spacing);
+
+                const tile = new Tile(this.scene, posX, startY, `tile_${randomColor}`, targetRow, col);
+                this.add(tile);
+                this.grid[targetRow][col] = tile;
+
+                dropTweens.push({
+                    targets: tile,
+                    y: targetY,
+                    duration: 250,
+                    ease: 'Bounce.easeOut'
+                });
+            }
+        }
+
+        if (dropTweens.length > 0) {
+            let completed = 0;
+            dropTweens.forEach(config => {
+                this.scene.tweens.add({
+                    ...config,
+                    onComplete: () => {
+                        completed++;
+                        if (completed === dropTweens.length) {
+                            const newMatches = this.checkMatches();
+                            if (newMatches.length > 0) {
+                                this.clearMatches(newMatches);
+                            } else {
+                                this.isBusy = false;
+                            }
+                        }
+                    }
+                });
+            });
+        } else {
+            this.isBusy = false;
+        }
     }
 }
