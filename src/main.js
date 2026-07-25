@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import BootScene from './scenes/BootScene.js';
+import MenuScene from './scenes/MenuScene.js';
 import GameScene from './scenes/GameScene.js';
 
 const config = {
@@ -17,7 +18,7 @@ const config = {
         roundPixels: true
     },
     backgroundColor: '#302c34',
-    scene: [BootScene, GameScene]
+    scene: [BootScene, MenuScene, GameScene]
 };
 
 new Phaser.Game(config);
