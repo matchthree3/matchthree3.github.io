@@ -9,8 +9,10 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.col = col;
         this.colorType = texture.replace('tile_', '');
 
-        // 核心修正：強制將圖片縮放到 64x64 像素
-        this.setDisplaySize(64, 64);
+        // 核心修正：計算原圖尺寸與目標尺寸(64px)的比例進行高畫質縮放
+        const targetSize = 64;
+        this.baseScale = targetSize / Math.max(this.width, this.height);
+        this.setScale(this.baseScale);
 
         this.setInteractive();
         
@@ -59,11 +61,11 @@ export default class Tile extends Phaser.GameObjects.Sprite {
 
     setSelected(selected) {
         if (selected) {
-            this.setAlpha(0.6);
-            this.setScale(this.scaleX * 0.9, this.scaleY * 0.9);
+            this.setAlpha(0.7);
+            this.setScale(this.baseScale * 0.9);
         } else {
             this.setAlpha(1);
-            this.setDisplaySize(64, 64);
+            this.setScale(this.baseScale);
         }
     }
 }
