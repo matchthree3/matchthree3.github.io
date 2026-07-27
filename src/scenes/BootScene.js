@@ -13,13 +13,14 @@ export default class BootScene extends Phaser.Scene {
         this.load.image('tile_green', 'assets/tile_green.png');
         this.load.image('tile_purple', 'assets/tile_purple.png');
 
-        // 特殊爆破道具圖案
+        // 特殊爆破道具
         this.load.image('tile_rocket', 'assets/tile_rocket.png');
         this.load.image('tile_rainbow', 'assets/tile_rainbow.png');
         this.load.image('tile_bomb', 'assets/tile_bomb.png');
     }
 
     create() {
-        this.scene.start('MenuScene');
+        // 直接啟動遊戲主場景
+        this.scene.start('GameScene');
     }
 }
