@@ -10,7 +10,6 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.colorType = texture.replace('tile_', '');
         this.specialType = 'none';
 
-        // 依據格子 64px 自動計算縮放
         const targetSize = 64;
         this.baseScale = targetSize / Math.max(this.width, this.height);
         this.setScale(this.baseScale);
@@ -23,25 +22,25 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.on('dragend', this.onDragEnd, this);
     }
 
-    // 設定特殊道具樣式與貼圖
     setSpecial(type) {
         this.specialType = type;
         this.clearTint();
 
-        if (type === 'row_rocket' || type === 'col_rocket') {
+        if (type === 'row_rocket') {
             this.setTexture('tile_rocket');
-            // 直向火箭旋轉 90 度區分方向
-            if (type === 'col_rocket') {
-                this.setAngle(90);
-            }
+            this.setAngle(0);
+        } else if (type === 'col_rocket') {
+            this.setTexture('tile_rocket');
+            this.setAngle(90);
         } else if (type === 'bomb') {
             this.setTexture('tile_bomb');
+            this.setAngle(0);
         } else if (type === 'rainbow') {
             this.setTexture('tile_rainbow');
+            this.setAngle(0);
             this.colorType = 'rainbow';
         }
 
-        // 更換貼圖後重新依原圖尺寸調整為 64px 比例
         const targetSize = 64;
         this.baseScale = targetSize / Math.max(this.width, this.height);
         this.setScale(this.baseScale);
