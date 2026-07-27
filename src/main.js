@@ -6,6 +6,8 @@ const config = {
     type: Phaser.AUTO,
     width: 540,
     height: 960,
+    // 核心修正：開啟高 DPI 支援，自動套用裝置的最高像素比（讓文字與圖片無敵清晰）
+    resolution: window.devicePixelRatio || 1,
     parent: 'game-container',
     scale: {
         mode: Phaser.Scale.FIT,
