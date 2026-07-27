@@ -108,7 +108,6 @@ export default class Board extends Phaser.GameObjects.Container {
                 if (matchesResult.tiles.length > 0) {
                     this.clearMatches(matchesResult);
                 } else {
-                    // 無效交換：彈回
                     this.grid[rA][cA] = tileA;
                     this.grid[rB][cB] = tileB;
                     tileA.row = rA; tileA.col = cA;
@@ -124,18 +123,11 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
-    // ==========================================
-    // 🌟 特效核心系統開始
-    // ==========================================
-
-    // 特效 1：基礎爆破與飄浮分數
     createPopEffect(x, y, colorStr) {
-        // 白光閃爍
         const flash = this.scene.add.circle(x, y, 20, 0xffffff, 0.8);
         this.add(flash);
         this.scene.tweens.add({ targets: flash, scale: 3, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
 
-        // 浮動分數
         const scoreText = this.scene.add.text(x, y - 10, '+10', {
             fontSize: '24px', fontStyle: 'bold', color: '#ffffff', stroke: '#000000', strokeThickness: 4
         }).setOrigin(0.5);
@@ -151,7 +143,6 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
-    // 特效 2：火箭貫穿雷射光束
     createRocketBeam(x, y, isRow) {
         const width = isRow ? 800 : 20;
         const height = isRow ? 20 : 800;
@@ -170,7 +161,6 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
-    // 特效 3：炸彈超大衝擊波
     createShockwave(x, y) {
         const wave = this.scene.add.circle(x, y, 30, 0xffaa00, 1);
         this.add(wave);
@@ -185,20 +175,17 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
-    // 特效 4：彩虹球全場閃電束
     triggerRainbow(rainbowTile, otherTile) {
         const targetColor = otherTile.colorType;
         const toClear = [rainbowTile];
         const beams = [];
 
-        // 找出所有同色軟糖，並發射連線光束
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols; c++) {
                 const t = this.grid[r][c];
                 if (t && (t.colorType === targetColor || t === otherTile)) {
                     toClear.push(t);
                     
-                    // 畫出閃電連線
                     const line = this.scene.add.line(0, 0, rainbowTile.x, rainbowTile.y, t.x, t.y, 0xffffff, 0.8).setOrigin(0,0);
                     line.setLineWidth(4);
                     this.add(line);
@@ -207,25 +194,18 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 強烈震動
         this.scene.cameras.main.shake(400, 0.03);
 
-        // 停頓 0.3 秒展示光束，然後引爆
         this.scene.time.delayedCall(300, () => {
             beams.forEach(b => b.destroy());
             this.clearMatches({ tiles: toClear, spawnSpecials: [] });
         });
     }
 
-    // ==========================================
-    // 🌟 邏輯與動畫執行
-    // ==========================================
-
     checkMatchesDetailed() {
         const matchedTiles = new Set();
         const spawnSpecials = [];
 
-        // 橫向判定
         for (let r = 0; r < this.rows; r++) {
             let matchLen = 1;
             for (let c = 0; c < this.cols; c++) {
@@ -243,7 +223,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 直向判定
         for (let c = 0; c < this.cols; c++) {
             let matchLen = 1;
             for (let r = 0; r < this.rows; r++) {
@@ -261,7 +240,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 觸發特殊道具範圍
         const expanded = new Set(matchedTiles);
         let maxShake = 0;
 
@@ -285,7 +263,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         });
 
-        // 依據爆炸規模決定震動強度
         if (maxShake > 0) this.scene.cameras.main.shake(300, maxShake);
         else if (expanded.size > 0) this.scene.cameras.main.shake(100, 0.005);
 
@@ -295,11 +272,13 @@ export default class Board extends Phaser.GameObjects.Container {
     clearMatches(matchesResult) {
         const matches = matchesResult.tiles;
 
-        // 觸發每個方塊的獨立 Q 彈與消失動畫
         matches.forEach(tile => {
+            if (this.grid[tile.row] && this.grid[tile.row][tile.col] === tile) {
+                this.grid[tile.row][tile.col] = null;
+            }
+
             this.createPopEffect(tile.x, tile.y, tile.colorType);
             
-            // 消失前的果凍膨脹動畫 (Juicy Pop)
             this.scene.tweens.add({
                 targets: tile,
                 scaleX: tile.scaleX * 1.3,
@@ -311,7 +290,6 @@ export default class Board extends Phaser.GameObjects.Container {
                         targets: tile,
                         scaleX: 0, scaleY: 0, alpha: 0, duration: 150,
                         onComplete: () => {
-                            this.grid[tile.row][tile.col] = null;
                             tile.destroy();
                         }
                     });
@@ -319,8 +297,7 @@ export default class Board extends Phaser.GameObjects.Container {
             });
         });
 
-        // 等待消失動畫結束後，生成新道具並掉落
-        this.scene.time.delayedCall(300, () => {
+        this.scene.time.delayedCall(360, () => {
             if (matchesResult.spawnSpecials) {
                 matchesResult.spawnSpecials.forEach(sp => {
                     const posX = this.offsetX + sp.col * (this.tileSize + this.spacing);
@@ -328,7 +305,6 @@ export default class Board extends Phaser.GameObjects.Container {
                     const newTile = new Tile(this.scene, posX, posY, `tile_${sp.color === 'rainbow' ? 'red' : sp.color}`, sp.row, sp.col);
                     newTile.setSpecial(sp.type);
                     
-                    // 道具生成的浮誇彈出動畫
                     newTile.setScale(0);
                     this.add(newTile);
                     this.grid[sp.row][sp.col] = newTile;
@@ -350,7 +326,6 @@ export default class Board extends Phaser.GameObjects.Container {
         for (let col = 0; col < this.cols; col++) {
             let emptySlots = 0;
 
-            // 1. 現有方塊往下掉
             for (let row = this.rows - 1; row >= 0; row--) {
                 if (this.grid[row][col] === null) {
                     emptySlots++;
@@ -367,13 +342,12 @@ export default class Board extends Phaser.GameObjects.Container {
                 }
             }
 
-            // 2. 頂部生成新方塊掉落
             for (let i = 0; i < emptySlots; i++) {
                 const targetRow = emptySlots - 1 - i;
                 const randomColor = Phaser.Math.RND.pick(this.colors);
 
                 const posX = this.offsetX + col * (this.tileSize + this.spacing);
-                const startY = this.offsetY - (i + 1) * (this.tileSize + this.spacing) - 100; // 從畫面外高處掉落
+                const startY = this.offsetY - (i + 1) * (this.tileSize + this.spacing) - 100;
                 const targetY = this.offsetY + targetRow * (this.tileSize + this.spacing);
 
                 const tile = new Tile(this.scene, posX, startY, `tile_${randomColor}`, targetRow, col);
@@ -392,7 +366,6 @@ export default class Board extends Phaser.GameObjects.Container {
                     onComplete: () => {
                         completed++;
                         if (completed === dropTweens.length) {
-                            // 延遲一點點再檢查連鎖，讓玩家看清楚掉落結果
                             this.scene.time.delayedCall(150, () => {
                                 const newMatchesResult = this.checkMatchesDetailed();
                                 if (newMatchesResult.tiles.length > 0) {
