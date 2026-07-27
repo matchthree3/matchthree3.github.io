@@ -96,9 +96,7 @@ export default class Board extends Phaser.GameObjects.Container {
         const posA = { x: tileA.x, y: tileA.y };
         const posB = { x: tileB.x, y: tileB.y };
 
-        this.scene.tweens.add({
-            targets: tileA, x: posB.x, y: posB.y, duration: 200
-        });
+        this.scene.tweens.add({ targets: tileA, x: posB.x, y: posB.y, duration: 200 });
 
         this.scene.tweens.add({
             targets: tileB, x: posA.x, y: posA.y, duration: 200,
@@ -134,12 +132,13 @@ export default class Board extends Phaser.GameObjects.Container {
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols; c++) {
                 const t = this.grid[r][c];
-                if (t && t.colorType === targetColor) {
+                if (t && (t.colorType === targetColor || t === otherTile)) {
                     toClear.push(t);
                 }
             }
         }
 
+        this.scene.cameras.main.shake(300, 0.02);
         this.clearMatches({ tiles: toClear, spawnSpecials: [] });
     }
 
@@ -147,6 +146,7 @@ export default class Board extends Phaser.GameObjects.Container {
         const matchedTiles = new Set();
         const spawnSpecials = [];
 
+        // 橫向連線判定
         for (let r = 0; r < this.rows; r++) {
             let matchLen = 1;
             for (let c = 0; c < this.cols; c++) {
@@ -171,6 +171,7 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
+        // 直向連線判定
         for (let c = 0; c < this.cols; c++) {
             let matchLen = 1;
             for (let r = 0; r < this.rows; r++) {
@@ -195,13 +196,19 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
+        // 觸發特殊道具爆破連帶範圍
         const expanded = new Set(matchedTiles);
+        let hasSpecialExploded = false;
+
         matchedTiles.forEach(tile => {
             if (tile.specialType === 'row_rocket') {
+                hasSpecialExploded = true;
                 for (let c = 0; c < this.cols; c++) if (this.grid[tile.row][c]) expanded.add(this.grid[tile.row][c]);
             } else if (tile.specialType === 'col_rocket') {
+                hasSpecialExploded = true;
                 for (let r = 0; r < this.rows; r++) if (this.grid[r][tile.col]) expanded.add(this.grid[r][tile.col]);
             } else if (tile.specialType === 'bomb') {
+                hasSpecialExploded = true;
                 for (let r = Math.max(0, tile.row - 1); r <= Math.min(this.rows - 1, tile.row + 1); r++) {
                     for (let c = Math.max(0, tile.col - 1); c <= Math.min(this.cols - 1, tile.col + 1); c++) {
                         if (this.grid[r][c]) expanded.add(this.grid[r][c]);
@@ -210,11 +217,35 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         });
 
+        if (hasSpecialExploded) {
+            this.scene.cameras.main.shake(200, 0.015);
+        }
+
         return { tiles: Array.from(expanded), spawnSpecials };
+    }
+
+    createExplosionEffect(x, y) {
+        // 生成粒子消除特效
+        const emitter = this.scene.add.particles(x + this.x, y + this.y, 'tile_red', {
+            speed: { min: 50, max: 200 },
+            scale: { start: 0.2, end: 0 },
+            lifespan: 300,
+            blendMode: 'ADD',
+            quantity: 8
+        });
+
+        this.scene.time.delayedCall(300, () => {
+            emitter.destroy();
+        });
     }
 
     clearMatches(matchesResult) {
         const matches = matchesResult.tiles;
+
+        // 生成消除爆破粒子
+        matches.forEach(tile => {
+            this.createExplosionEffect(tile.x, tile.y);
+        });
 
         this.scene.tweens.add({
             targets: matches,
