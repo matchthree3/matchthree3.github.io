@@ -43,7 +43,20 @@ export default class Board extends Phaser.GameObjects.Container {
         }
     }
 
+    // 點擊選取或單點觸發道具
     selectTile(tile) {
+        if (this.isBusy) return;
+
+        // 【做法 B】直接點擊特殊道具（火箭/炸彈/彩虹球）立即引爆
+        if (tile.specialType !== 'none') {
+            if (this.selectedTile) {
+                this.selectedTile.setSelected(false);
+                this.selectedTile = null;
+            }
+            this.triggerSingleSpecial(tile);
+            return;
+        }
+
         if (!this.selectedTile) {
             this.selectedTile = tile;
             tile.setSelected(true);
@@ -99,15 +112,27 @@ export default class Board extends Phaser.GameObjects.Container {
         this.scene.tweens.add({
             targets: tileB, x: posA.x, y: posA.y, duration: 250, ease: 'Back.easeOut',
             onComplete: () => {
+                // 1. 彩虹球交換優先判定
                 if (tileA.specialType === 'rainbow' || tileB.specialType === 'rainbow') {
                     this.triggerRainbow(tileA.specialType === 'rainbow' ? tileA : tileB, tileA.specialType === 'rainbow' ? tileB : tileA);
                     return;
                 }
 
+                // 2. 【做法 B】只要交換的其中一方包含火箭或炸彈，無條件直接引爆！不用湊 3 連消
+                const isSpecialA = ['row_rocket', 'col_rocket', 'bomb'].includes(tileA.specialType);
+                const isSpecialB = ['row_rocket', 'col_rocket', 'bomb'].includes(tileB.specialType);
+                
+                if (isSpecialA || isSpecialB) {
+                    this.triggerSpecialSwap(tileA, tileB);
+                    return;
+                }
+
+                // 3. 一般軟糖的 3 消檢查
                 const matchesResult = this.checkMatchesDetailed();
                 if (matchesResult.tiles.length > 0) {
                     this.clearMatches(matchesResult);
                 } else {
+                    // 無效交換：彈回
                     this.grid[rA][cA] = tileA;
                     this.grid[rB][cB] = tileB;
                     tileA.row = rA; tileA.col = cA;
@@ -123,6 +148,47 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
+    // 單點特殊道具引爆
+    triggerSingleSpecial(tile) {
+        this.isBusy = true;
+        const expanded = new Set([tile]);
+        this.expandSpecialEffect(tile, expanded);
+
+        this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
+    }
+
+    // 交換特殊道具引爆
+    triggerSpecialSwap(tileA, tileB) {
+        const expanded = new Set([tileA, tileB]);
+        
+        this.expandSpecialEffect(tileA, expanded);
+        this.expandSpecialEffect(tileB, expanded);
+
+        this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
+    }
+
+    // 計算特殊道具的爆炸影響區域
+    expandSpecialEffect(tile, expandedSet) {
+        if (tile.specialType === 'row_rocket') {
+            this.createRocketBeam(tile.x, tile.y, true);
+            this.scene.cameras.main.shake(200, 0.02);
+            for (let c = 0; c < this.cols; c++) if (this.grid[tile.row][c]) expandedSet.add(this.grid[tile.row][c]);
+        } else if (tile.specialType === 'col_rocket') {
+            this.createRocketBeam(tile.x, tile.y, false);
+            this.scene.cameras.main.shake(200, 0.02);
+            for (let r = 0; r < this.rows; r++) if (this.grid[r][tile.col]) expandedSet.add(this.grid[r][tile.col]);
+        } else if (tile.specialType === 'bomb') {
+            this.createShockwave(tile.x, tile.y);
+            this.scene.cameras.main.shake(300, 0.04);
+            for (let r = Math.max(0, tile.row - 1); r <= Math.min(this.rows - 1, tile.row + 1); r++) {
+                for (let c = Math.max(0, tile.col - 1); c <= Math.min(this.cols - 1, tile.col + 1); c++) {
+                    if (this.grid[r][c]) expandedSet.add(this.grid[r][c]);
+                }
+            }
+        }
+    }
+
+    // 特效 1：基礎爆破與飄浮分數
     createPopEffect(x, y, colorStr) {
         const flash = this.scene.add.circle(x, y, 20, 0xffffff, 0.8);
         this.add(flash);
@@ -143,6 +209,7 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
+    // 特效 2：火箭貫穿雷射光束
     createRocketBeam(x, y, isRow) {
         const width = isRow ? 800 : 20;
         const height = isRow ? 20 : 800;
@@ -161,6 +228,7 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
+    // 特效 3：炸彈衝擊波
     createShockwave(x, y) {
         const wave = this.scene.add.circle(x, y, 30, 0xffaa00, 1);
         this.add(wave);
@@ -175,6 +243,7 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
+    // 特效 4：彩虹球全場閃電束
     triggerRainbow(rainbowTile, otherTile) {
         const targetColor = otherTile.colorType;
         const toClear = [rainbowTile];
@@ -241,36 +310,23 @@ export default class Board extends Phaser.GameObjects.Container {
         }
 
         const expanded = new Set(matchedTiles);
-        let maxShake = 0;
-
         matchedTiles.forEach(tile => {
-            if (tile.specialType === 'row_rocket') {
-                this.createRocketBeam(tile.x, tile.y, true);
-                maxShake = Math.max(maxShake, 0.02);
-                for (let c = 0; c < this.cols; c++) if (this.grid[tile.row][c]) expanded.add(this.grid[tile.row][c]);
-            } else if (tile.specialType === 'col_rocket') {
-                this.createRocketBeam(tile.x, tile.y, false);
-                maxShake = Math.max(maxShake, 0.02);
-                for (let r = 0; r < this.rows; r++) if (this.grid[r][tile.col]) expanded.add(this.grid[r][tile.col]);
-            } else if (tile.specialType === 'bomb') {
-                this.createShockwave(tile.x, tile.y);
-                maxShake = Math.max(maxShake, 0.04);
-                for (let r = Math.max(0, tile.row - 1); r <= Math.min(this.rows - 1, tile.row + 1); r++) {
-                    for (let c = Math.max(0, tile.col - 1); c <= Math.min(this.cols - 1, tile.col + 1); c++) {
-                        if (this.grid[r][c]) expanded.add(this.grid[r][c]);
-                    }
-                }
-            }
+            this.expandSpecialEffect(tile, expanded);
         });
-
-        if (maxShake > 0) this.scene.cameras.main.shake(300, maxShake);
-        else if (expanded.size > 0) this.scene.cameras.main.shake(100, 0.005);
 
         return { tiles: Array.from(expanded), spawnSpecials };
     }
 
     clearMatches(matchesResult) {
         const matches = matchesResult.tiles;
+
+        // 加分邏輯
+        if (this.scene.score !== undefined) {
+            this.scene.score += matches.length * 10;
+            if (this.scene.scoreText) {
+                this.scene.scoreText.setText('Score: ' + this.scene.score);
+            }
+        }
 
         matches.forEach(tile => {
             if (this.grid[tile.row] && this.grid[tile.row][tile.col] === tile) {
