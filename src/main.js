@@ -14,8 +14,10 @@ const config = {
     },
     render: {
         antialias: true,
-        roundPixels: true
+        roundPixels: true,
+        powerPreference: 'high-performance'
     },
+    fps: { target: 60, forceSetTimeOut: false },
     backgroundColor: '#302c34',
     scene: [BootScene, MenuScene, GameScene]
 };
