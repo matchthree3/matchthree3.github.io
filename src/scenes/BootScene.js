@@ -6,21 +6,18 @@ export default class BootScene extends Phaser.Scene {
     }
 
     preload() {
-        // 基礎水果軟糖
         this.load.image('tile_red', 'assets/tile_red.png');
         this.load.image('tile_blue', 'assets/tile_blue.png');
         this.load.image('tile_yellow', 'assets/tile_yellow.png');
         this.load.image('tile_green', 'assets/tile_green.png');
         this.load.image('tile_purple', 'assets/tile_purple.png');
 
-        // 特殊爆破道具
         this.load.image('tile_rocket', 'assets/tile_rocket.png');
-        this.load.image('tile_rainbow', 'assets/tile_rainbow.png');
         this.load.image('tile_bomb', 'assets/tile_bomb.png');
+        this.load.image('tile_rainbow', 'assets/tile_rainbow.png');
     }
 
     create() {
-        // 直接啟動遊戲主場景
-        this.scene.start('GameScene');
+        this.scene.start('MenuScene');
     }
 }
