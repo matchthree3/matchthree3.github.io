@@ -5,12 +5,14 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         super(scene, x, y, texture);
         scene.add.existing(this);
 
+        // --- 1. 遊戲邏輯資料層 (Data) ---
         this.row = row;
         this.col = col;
         this.colorType = texture.replace('tile_', '');
-        this.specialType = 'none';
+        this.specialType = 'none'; // 'none', 'row_rocket', 'col_rocket', 'bomb', 'rainbow'
+        this.isMarkedForClear = false;
 
-        // 強制根據 64px 限制縮放，防止大圖爆開
+        // --- 2. 視覺尺寸與互動 (Visuals) ---
         const targetSize = 64;
         this.baseScale = targetSize / Math.max(this.width, this.height);
         this.setScale(this.baseScale);
@@ -46,19 +48,20 @@ export default class Tile extends Phaser.GameObjects.Sprite {
     }
 
     onPointerDown() {
-        if (this.scene.board && !this.scene.board.isBusy) {
+        if (this.scene.board && !this.scene.board.isLocked) {
             this.scene.board.selectTile(this);
         }
     }
 
     onDragStart(pointer) {
-        if (this.scene.board && !this.scene.board.isBusy) {
+        if (this.scene.board && !this.scene.board.isLocked) {
             this.dragStartX = pointer.x;
             this.dragStartY = pointer.y;
         }
     }
 
     onDragEnd(pointer) {
+        if (!this.dragStartX || !this.dragStartY) return;
         const diffX = pointer.x - this.dragStartX;
         const diffY = pointer.y - this.dragStartY;
         const threshold = 20;
