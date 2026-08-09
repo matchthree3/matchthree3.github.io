@@ -8,11 +8,8 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.row = row;
         this.col = col;
         this.colorType = texture.replace('tile_', '');
-        this.specialType = 'none';
-
-        const targetSize = 64;
-        this.baseScale = targetSize / Math.max(this.width, this.height);
-        this.setScale(this.baseScale);
+        this.specialType = 'none'; // 'none', 'row_rocket', 'col_rocket', 'bomb', 'rainbow'
+        this.baseScale = 1;
 
         this.setInteractive();
         this.scene.input.setDraggable(this);
@@ -26,59 +23,54 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.specialType = type;
         this.clearTint();
 
-        if (type === 'row_rocket') {
+        if (type === 'row_rocket' || type === 'col_rocket') {
             this.setTexture('tile_rocket');
-            this.setAngle(90);
-        } else if (type === 'col_rocket') {
-            this.setTexture('tile_rocket');
-            this.setAngle(0);
+            // row_rocket (水平貫穿): 旋轉 90 度讓直立圖案平躺
+            // col_rocket (垂直貫穿): 保持 0 度直立
+            if (type === 'row_rocket') {
+                this.setAngle(90);
+            } else {
+                this.setAngle(0);
+            }
         } else if (type === 'bomb') {
             this.setTexture('tile_bomb');
-            this.setAngle(0);
         } else if (type === 'rainbow') {
             this.setTexture('tile_rainbow');
-            this.setAngle(0);
             this.colorType = 'rainbow';
         }
 
-        const targetSize = 64;
-        this.baseScale = targetSize / Math.max(this.width, this.height);
+        const maxDim = Math.max(this.width, this.height);
+        this.baseScale = (64 / maxDim) * (type === 'none' ? 1 : 1.15);
         this.setScale(this.baseScale);
     }
 
     onPointerDown() {
-        if (this.scene.board && !this.scene.board.isBusy) {
-            this.scene.board.selectTile(this);
-        }
+        this.scene.board.selectTile(this);
     }
 
     onDragStart(pointer) {
-        if (this.scene.board && !this.scene.board.isBusy) {
-            this.startX = pointer.x;
-            this.startY = pointer.y;
-        }
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
     }
 
     onDragEnd(pointer) {
-        if (!this.scene.board || this.scene.board.isBusy) return;
-
-        const deltaX = pointer.x - this.startX;
-        const deltaY = pointer.y - this.startY;
+        const diffX = pointer.x - this.dragStartX;
+        const diffY = pointer.y - this.dragStartY;
         const threshold = 20;
 
-        let targetRow = this.row;
-        let targetCol = this.col;
+        if (Math.abs(diffX) > threshold || Math.abs(diffY) > threshold) {
+            let targetRow = this.row;
+            let targetCol = this.col;
 
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-            if (deltaX > threshold) targetCol += 1;
-            else if (deltaX < -threshold) targetCol -= 1;
-        } else {
-            if (deltaY > threshold) targetRow += 1;
-            else if (deltaY < -threshold) targetRow -= 1;
-        }
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                targetCol += diffX > 0 ? 1 : -1;
+            } else {
+                targetRow += diffY > 0 ? 1 : -1;
+            }
 
-        if (targetRow !== this.row || targetCol !== this.col) {
-            this.scene.board.handleDragSwap(this, targetRow, targetCol);
+            if (targetRow >= 0 && targetRow < 8 && targetCol >= 0 && targetCol < 8) {
+                this.scene.board.handleDragSwap(this, targetRow, targetCol);
+            }
         }
     }
 
