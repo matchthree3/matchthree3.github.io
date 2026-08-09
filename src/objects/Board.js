@@ -28,7 +28,6 @@ export default class Board extends Phaser.GameObjects.Container {
             rainbow: 0xffffff
         };
 
-        // 物件池 (Object Pools)
         this.flashPool = [];
         this.scoreTextPool = [];
         this.rowBeamPool = [];
@@ -94,6 +93,11 @@ export default class Board extends Phaser.GameObjects.Container {
                 this.grid[row][col] = tile;
             }
         }
+
+        // 開局若無解，自動洗牌
+        if (!this.hasPossibleMove()) {
+            this.shuffleBoard();
+        }
     }
 
     selectTile(tile) {
@@ -104,6 +108,7 @@ export default class Board extends Phaser.GameObjects.Container {
                 this.selectedTile.setSelected(false);
                 this.selectedTile = null;
             }
+            if (this.scene.useMove) this.scene.useMove();
             this.triggerSingleSpecial(tile);
             return;
         }
@@ -168,6 +173,7 @@ export default class Board extends Phaser.GameObjects.Container {
             targets: tileB, x: posA.x, y: posA.y, duration: 250, ease: 'Back.easeOut',
             onComplete: () => {
                 if (tileA.specialType === 'rainbow' || tileB.specialType === 'rainbow') {
+                    if (this.scene.useMove) this.scene.useMove();
                     this.triggerRainbow(tileA.specialType === 'rainbow' ? tileA : tileB, tileA.specialType === 'rainbow' ? tileB : tileA);
                     return;
                 }
@@ -176,12 +182,14 @@ export default class Board extends Phaser.GameObjects.Container {
                 const isSpecialB = ['row_rocket', 'col_rocket', 'bomb'].includes(tileB.specialType);
 
                 if (isSpecialA || isSpecialB) {
+                    if (this.scene.useMove) this.scene.useMove();
                     this.triggerSpecialSwap(tileA, tileB);
                     return;
                 }
 
                 const matchesResult = this.checkMatchesDetailed(tileA);
                 if (matchesResult.tiles.length > 0) {
+                    if (this.scene.useMove) this.scene.useMove();
                     this.clearMatches(matchesResult);
                 } else {
                     this.grid[rA][cA] = tileA;
@@ -442,7 +450,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         };
 
-        // 1. 掃描橫向 Match
         const hMatches = [];
         for (let r = 0; r < this.rows; r++) {
             let matchLen = 1;
@@ -465,7 +472,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 2. 掃描直向 Match
         const vMatches = [];
         for (let c = 0; c < this.cols; c++) {
             let matchLen = 1;
@@ -488,7 +494,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 3. 處理 5+ 連消 (優先級 3: Rainbow)
         hMatches.forEach(h => {
             if (h.len >= 5) {
                 const target = h.line.includes(activeSwappedTile) ? activeSwappedTile : h.line[Math.floor(h.len / 2)];
@@ -502,7 +507,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         });
 
-        // 4. 處理真正的 T/L 型連線幾何檢測 (優先級 2: Bomb)
         const processedT = new Set();
         hMatches.forEach((h, hIdx) => {
             vMatches.forEach((v, vIdx) => {
@@ -529,14 +533,12 @@ export default class Board extends Phaser.GameObjects.Container {
                 const hasUp = sameColor(up);
                 const hasDown = sameColor(down);
 
-                // T 型幾何判定
                 const isTShape =
                     (hasLeft && hasRight && hasUp) ||
                     (hasLeft && hasRight && hasDown) ||
                     (hasUp && hasDown && hasLeft) ||
                     (hasUp && hasDown && hasRight);
 
-                // L 型幾何判定
                 const isLShape =
                     (hasLeft && hasDown) ||
                     (hasLeft && hasUp) ||
@@ -548,7 +550,6 @@ export default class Board extends Phaser.GameObjects.Container {
                 processedT.add(`h_${hIdx}`);
                 processedT.add(`v_${vIdx}`);
 
-                // 玩家移動的 Tile 優先變身 Bomb
                 const target =
                     activeSwappedTile &&
                     (h.line.includes(activeSwappedTile) || v.line.includes(activeSwappedTile))
@@ -559,7 +560,6 @@ export default class Board extends Phaser.GameObjects.Container {
             });
         });
 
-        // 5. 處理純 4 連消 (優先級 1: Rocket)
         hMatches.forEach((h, hIdx) => {
             if (h.len === 4 && !processedT.has(`h_${hIdx}`)) {
                 const target = h.line.includes(activeSwappedTile) ? activeSwappedTile : h.line[Math.floor(h.len / 2)];
@@ -575,7 +575,6 @@ export default class Board extends Phaser.GameObjects.Container {
 
         spawnGridMap.forEach(sp => spawnSpecials.push(sp));
 
-        // 遞迴觸發連鎖爆破
         const expanded = new Set(matchedTiles);
         const processedSpecials = new Set();
         matchedTiles.forEach(tile => {
@@ -600,8 +599,8 @@ export default class Board extends Phaser.GameObjects.Container {
         if (this.scene.score !== undefined) {
             scoreGain = matches.length * 10 * this.comboCount;
             this.scene.score += scoreGain;
-            if (this.scene.scoreText) {
-                this.scene.scoreText.setText('Score: ' + this.scene.score);
+            if (this.scene.updateScore) {
+                this.scene.updateScore(scoreGain);
             }
         }
 
@@ -711,7 +710,12 @@ export default class Board extends Phaser.GameObjects.Container {
                                     this.comboCount++;
                                     this.clearMatches(newMatchesResult);
                                 } else {
-                                    this.isBusy = false;
+                                    // 下落完成後檢查是否有解，若死局則自動洗牌
+                                    if (!this.hasPossibleMove()) {
+                                        this.shuffleBoard();
+                                    } else {
+                                        this.isBusy = false;
+                                    }
                                 }
                             });
                         }
@@ -719,7 +723,121 @@ export default class Board extends Phaser.GameObjects.Container {
                 });
             });
         } else {
-            this.isBusy = false;
+            if (!this.hasPossibleMove()) {
+                this.shuffleBoard();
+            } else {
+                this.isBusy = false;
+            }
         }
+    }
+
+    // 檢查是否有至少一步可消除的棋（無解盤面檢測）
+    hasPossibleMove() {
+        // 先檢查盤面上是否有特殊道具（特殊道具可以直接點擊）
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                if (this.grid[r][c] && this.grid[r][c].specialType !== 'none') return true;
+            }
+        }
+
+        // 模擬交換檢查
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                const cur = this.grid[r][c];
+                if (!cur) continue;
+
+                // 檢查右邊交換
+                if (c + 1 < this.cols) {
+                    const right = this.grid[r][c + 1];
+                    if (right && this.wouldMatch(cur, right)) return true;
+                }
+
+                // 檢查下邊交換
+                if (r + 1 < this.rows) {
+                    const down = this.grid[r + 1][c];
+                    if (down && this.wouldMatch(cur, down)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    wouldMatch(tileA, tileB) {
+        // 虛擬交換
+        const rA = tileA.row, cA = tileA.col;
+        const rB = tileB.row, cB = tileB.col;
+
+        this.grid[rA][cA] = tileB;
+        this.grid[rB][cB] = tileA;
+
+        tileA.row = rB; tileA.col = cB;
+        tileB.row = rA; tileB.col = cA;
+
+        const res = this.checkMatchesDetailed();
+        const hasMatch = res.tiles.length > 0;
+
+        // 還原
+        this.grid[rA][cA] = tileA;
+        this.grid[rB][cB] = tileB;
+
+        tileA.row = rA; tileA.col = cA;
+        tileB.row = rB; tileB.col = cB;
+
+        return hasMatch;
+    }
+
+    // 無解盤面自動洗牌
+    shuffleBoard() {
+        this.isBusy = true;
+
+        const txt = this.scene.add.text(this.x, this.y, '無解，自動洗牌中... 🔄', {
+            fontSize: '32px', fontStyle: 'bold', color: '#ffe14d', stroke: '#000000', strokeThickness: 6
+        }).setOrigin(0.5);
+
+        this.scene.tweens.add({
+            targets: txt,
+            scale: 1.2,
+            alpha: 0,
+            duration: 1200,
+            onComplete: () => txt.destroy()
+        });
+
+        // 將所有一般方塊重新分配位置
+        const allTiles = [];
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                if (this.grid[r][c]) allTiles.push(this.grid[r][c]);
+            }
+        }
+
+        Phaser.Utils.Array.Shuffle(allTiles);
+
+        let idx = 0;
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                const tile = allTiles[idx++];
+                this.grid[r][c] = tile;
+                tile.row = r;
+                tile.col = c;
+
+                const pos = this.worldPos(r, c);
+                this.scene.tweens.add({
+                    targets: tile,
+                    x: pos.x,
+                    y: pos.y,
+                    duration: 400,
+                    ease: 'Cubic.easeInOut'
+                });
+            }
+        }
+
+        this.scene.time.delayedCall(500, () => {
+            const matches = this.checkMatchesDetailed();
+            if (matches.tiles.length > 0 || !this.hasPossibleMove()) {
+                this.shuffleBoard();
+            } else {
+                this.isBusy = false;
+            }
+        });
     }
 }
