@@ -28,10 +28,10 @@ export default class Tile extends Phaser.GameObjects.Sprite {
 
         if (type === 'row_rocket') {
             this.setTexture('tile_rocket');
-            this.setAngle(0);
+            this.setAngle(90);
         } else if (type === 'col_rocket') {
             this.setTexture('tile_rocket');
-            this.setAngle(90);
+            this.setAngle(0);
         } else if (type === 'bomb') {
             this.setTexture('tile_bomb');
             this.setAngle(0);
