@@ -136,7 +136,6 @@ export default class Board extends Phaser.GameObjects.Container {
         this.scene.tweens.add({
             targets: tileB, x: posA.x, y: posA.y, duration: 250, ease: 'Back.easeOut',
             onComplete: () => {
-                // 檢查是否包含特殊方塊互動
                 const isSpecialA = tileA.specialType !== 'none';
                 const isSpecialB = tileB.specialType !== 'none';
 
@@ -145,21 +144,19 @@ export default class Board extends Phaser.GameObjects.Container {
                     return;
                 }
 
-                // 普通 3 消判斷
                 const matchesResult = this.checkMatchesDetailed(tileA);
                 if (matchesResult.tiles.length > 0) {
-                    // 步數扣除
                     if (this.scene.moves !== undefined) {
                         this.scene.moves--;
                         if (this.scene.movesText) this.scene.movesText.setText(`Moves: ${this.scene.moves}`);
                     }
                     this.clearMatches(matchesResult);
                 } else {
-                    // 無效交換：彈回
+                    // 修正 1：修復無效交換彈回時 tileB 的座標設定 Bug (cB 替代 cA)
                     this.grid[rA][cA] = tileA;
                     this.grid[rB][cB] = tileB;
                     tileA.row = rA; tileA.col = cA;
-                    tileB.row = rB; tileB.col = cA;
+                    tileB.row = rB; tileB.col = cB;
 
                     this.scene.tweens.add({ targets: tileA, x: posA.x, y: posA.y, duration: 200, ease: 'Power2' });
                     this.scene.tweens.add({
@@ -175,7 +172,6 @@ export default class Board extends Phaser.GameObjects.Container {
     // 🌟 特殊方塊組合邏輯 (Explicit Combo Handling)
     // ==========================================
     handleSpecialCombo(tileA, tileB) {
-        // 扣除步數
         if (this.scene.moves !== undefined) {
             this.scene.moves--;
             if (this.scene.movesText) this.scene.movesText.setText(`Moves: ${this.scene.moves}`);
@@ -198,7 +194,7 @@ export default class Board extends Phaser.GameObjects.Container {
             return;
         }
 
-        // 2. Rainbow + Special (Rocket / Bomb)
+        // 2. Rainbow + Special / Normal
         if (typeA === 'rainbow' || typeB === 'rainbow') {
             const rainbowTile = typeA === 'rainbow' ? tileA : tileB;
             const otherTile = typeA === 'rainbow' ? tileB : tileA;
@@ -217,28 +213,25 @@ export default class Board extends Phaser.GameObjects.Container {
                 this.flushShake();
                 this.clearMatches({ tiles: toClear, spawnSpecials: [] });
             } else {
-                // Rainbow + Rocket 或 Rainbow + Bomb
-                // 全盤該顏色轉為該特殊道具，並全部觸發
-                const specialToDuplicate = otherTile.specialType;
+                // 修正 2 & 3：Rainbow + Rocket/Bomb 轉化與遞迴觸發連鎖
+                const targetSpecialType = otherTile.specialType; // 保留被交換道具的確切方向（如 row_rocket / col_rocket / bomb）
                 const convertedSpecials = [];
 
                 for (let r = 0; r < this.rows; r++) {
                     for (let c = 0; c < this.cols; c++) {
                         const t = this.grid[r][c];
                         if (t && t.colorType === targetColor) {
-                            // 隨機指定橫向或直向火箭
-                            const newType = (specialToDuplicate.includes('rocket')) 
-                                ? (Math.random() > 0.5 ? 'row_rocket' : 'col_rocket') 
-                                : 'bomb';
-                            t.setSpecial(newType);
+                            t.setSpecial(targetSpecialType);
                             convertedSpecials.push(t);
                         }
                     }
                 }
 
-                // 觸發所有轉換後的特殊道具
+                // 逐個觸發連鎖效應
                 const expanded = new Set([rainbowTile, otherTile, ...convertedSpecials]);
-                convertedSpecials.forEach(sp => this.expandSpecialEffect(sp, expanded, new Set()));
+                const processedSpecials = new Set();
+                convertedSpecials.forEach(sp => this.expandSpecialEffect(sp, expanded, processedSpecials));
+                
                 this.flushShake();
                 this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
             }
@@ -278,11 +271,9 @@ export default class Board extends Phaser.GameObjects.Container {
             this.createShockwave(tileB.x, tileB.y);
             this.queueShake(400, 0.04);
 
-            // 3 行
             for (let r = Math.max(0, centerRow - 1); r <= Math.min(this.rows - 1, centerRow + 1); r++) {
                 for (let c = 0; c < this.cols; c++) if (this.grid[r][c]) expanded.add(this.grid[r][c]);
             }
-            // 3 列
             for (let c = Math.max(0, centerCol - 1); c <= Math.min(this.cols - 1, centerCol + 1); c++) {
                 for (let r = 0; r < this.rows; r++) if (this.grid[r][c]) expanded.add(this.grid[r][c]);
             }
@@ -370,7 +361,6 @@ export default class Board extends Phaser.GameObjects.Container {
         const hMatches = [];
         const vMatches = [];
 
-        // 1. 掃描橫向連線
         for (let r = 0; r < this.rows; r++) {
             let matchLen = 1;
             for (let c = 0; c < this.cols; c++) {
@@ -391,7 +381,6 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         }
 
-        // 2. 掃描直向連線
         for (let c = 0; c < this.cols; c++) {
             let matchLen = 1;
             for (let r = 0; r < this.rows; r++) {
@@ -438,7 +427,6 @@ export default class Board extends Phaser.GameObjects.Container {
             return line[Math.floor(line.length / 2)];
         };
 
-        // 3. 處理 5 連消 (Rainbow - Priority 3)
         hMatches.forEach(h => {
             h.line.forEach(t => matchedTilesSet.add(t));
             if (h.length >= 5) registerSpawn(pickSpawnTile(h.line), 'rainbow', 'rainbow');
@@ -448,7 +436,6 @@ export default class Board extends Phaser.GameObjects.Container {
             if (v.length >= 5) registerSpawn(pickSpawnTile(v.line), 'rainbow', 'rainbow');
         });
 
-        // 4. 處理 T / L 型幾何判定 (Bomb - Priority 2)
         hMatches.forEach(h => {
             vMatches.forEach(v => {
                 if (h.color === v.color) {
@@ -474,9 +461,6 @@ export default class Board extends Phaser.GameObjects.Container {
             });
         });
 
-        // 5. 處理 4 連消 (Rocket - Priority 1)
-        // 水平 4 連 ➔ 產生垂直貫穿火箭 (col_rocket)
-        // 垂直 4 連 ➔ 產生水平貫穿火箭 (row_rocket)
         hMatches.forEach(h => {
             if (h.length === 4) registerSpawn(pickSpawnTile(h.line), 'col_rocket', h.color);
         });
@@ -498,7 +482,6 @@ export default class Board extends Phaser.GameObjects.Container {
             return;
         }
 
-        // 得分倍率與連擊 (Combo) 計算
         if (this.scene.score !== undefined) {
             const scoreGain = matches.length * 10 * this.comboCount;
             this.scene.score += scoreGain;
@@ -586,7 +569,6 @@ export default class Board extends Phaser.GameObjects.Container {
                                     this.clearMatches(newMatches);
                                 } else {
                                     this.isBusy = false;
-                                    // 檢查是否無解盤面 (Has Possible Move)
                                     if (!this.hasPossibleMove()) {
                                         this.shuffleBoard();
                                     }
@@ -604,14 +586,11 @@ export default class Board extends Phaser.GameObjects.Container {
     hasPossibleMove() {
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols; c++) {
-                // 只要盤面有特殊道具，視為有解
                 if (this.grid[r][c] && this.grid[r][c].specialType !== 'none') return true;
 
-                // 檢查右側交換
                 if (c < this.cols - 1) {
                     if (this.testSwapHasMatch(r, c, r, c + 1)) return true;
                 }
-                // 檢查下方交換
                 if (r < this.rows - 1) {
                     if (this.testSwapHasMatch(r, c, r + 1, c)) return true;
                 }
@@ -629,7 +608,6 @@ export default class Board extends Phaser.GameObjects.Container {
         this.grid[r2][c2] = t1;
 
         let hasMatch = false;
-        // 簡易檢查 3 連
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols - 2; c++) {
                 if (this.grid[r][c] && this.grid[r][c+1] && this.grid[r][c+2]) {
@@ -642,7 +620,6 @@ export default class Board extends Phaser.GameObjects.Container {
             if (hasMatch) break;
         }
 
-        // 復原
         this.grid[r1][c1] = t1;
         this.grid[r2][c2] = t2;
         return hasMatch;
@@ -670,7 +647,6 @@ export default class Board extends Phaser.GameObjects.Container {
         }
     }
 
-    // ---- 特效輔助 ----
     queueShake(duration, intensity) {
         if (duration > this._shakeDuration) this._shakeDuration = duration;
         if (intensity > this._shakeIntensity) this._shakeIntensity = intensity;
