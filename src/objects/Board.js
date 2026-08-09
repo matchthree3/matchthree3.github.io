@@ -502,23 +502,60 @@ export default class Board extends Phaser.GameObjects.Container {
             }
         });
 
-        // 4. 處理 T/L 型連線交叉點 (優先級 2: Bomb)
+        // 4. 處理真正的 T/L 型連線幾何檢測 (優先級 2: Bomb)
         const processedT = new Set();
         hMatches.forEach((h, hIdx) => {
             vMatches.forEach((v, vIdx) => {
-                if (h.color === v.color) {
-                    const intersection = h.line.find(ht => v.line.includes(ht));
-                    if (intersection) {
-                        processedT.add(`h_${hIdx}`);
-                        processedT.add(`v_${vIdx}`);
+                if (h.color !== v.color) return;
 
-                        const target = (activeSwappedTile && (h.line.includes(activeSwappedTile) || v.line.includes(activeSwappedTile)))
-                            ? activeSwappedTile
-                            : intersection;
+                const intersection = h.line.find(tile => v.line.includes(tile));
+                if (!intersection) return;
 
-                        addCandidate(target.row, target.col, 'bomb', h.color);
-                    }
-                }
+                const r = intersection.row;
+                const c = intersection.col;
+
+                const left  = this.grid[r]?.[c - 1];
+                const right = this.grid[r]?.[c + 1];
+                const up    = this.grid[r - 1]?.[c];
+                const down  = this.grid[r + 1]?.[c];
+
+                const sameColor = (tile) =>
+                    tile &&
+                    tile.colorType === h.color &&
+                    tile.colorType !== 'rainbow';
+
+                const hasLeft = sameColor(left);
+                const hasRight = sameColor(right);
+                const hasUp = sameColor(up);
+                const hasDown = sameColor(down);
+
+                // T 型幾何判定
+                const isTShape =
+                    (hasLeft && hasRight && hasUp) ||
+                    (hasLeft && hasRight && hasDown) ||
+                    (hasUp && hasDown && hasLeft) ||
+                    (hasUp && hasDown && hasRight);
+
+                // L 型幾何判定
+                const isLShape =
+                    (hasLeft && hasDown) ||
+                    (hasLeft && hasUp) ||
+                    (hasRight && hasDown) ||
+                    (hasRight && hasUp);
+
+                if (!isTShape && !isLShape) return;
+
+                processedT.add(`h_${hIdx}`);
+                processedT.add(`v_${vIdx}`);
+
+                // 玩家移動的 Tile 優先變身 Bomb
+                const target =
+                    activeSwappedTile &&
+                    (h.line.includes(activeSwappedTile) || v.line.includes(activeSwappedTile))
+                        ? activeSwappedTile
+                        : intersection;
+
+                addCandidate(target.row, target.col, 'bomb', h.color);
             });
         });
 
