@@ -5,7 +5,6 @@ export default class Board extends Phaser.GameObjects.Container {
     constructor(scene, x, y) {
         super(scene, x, y);
         scene.add.existing(this);
-
         this.rows = 8;
         this.cols = 8;
         this.tileSize = 64;
@@ -14,20 +13,14 @@ export default class Board extends Phaser.GameObjects.Container {
         this.selectedTile = null;
         this.isBusy = false;
         this.comboCount = 1;
-
         this.colors = ['red', 'blue', 'green', 'yellow', 'purple'];
         this.offsetX = -((this.cols * (this.tileSize + this.spacing)) / 2) + (this.tileSize / 2);
         this.offsetY = -((this.rows * (this.tileSize + this.spacing)) / 2) + (this.tileSize / 2);
 
-        // 物件池
-        this.flashPool = [];
         this.scoreTextPool = [];
         this.rowBeamPool = [];
         this.colBeamPool = [];
         this.wavePool = [];
-
-        this.rainbowGraphics = this.scene.add.graphics();
-        this.add(this.rainbowGraphics);
 
         this._shakeDuration = 0;
         this._shakeIntensity = 0;
@@ -53,12 +46,10 @@ export default class Board extends Phaser.GameObjects.Container {
                 if (row >= 2 && this.grid[row - 1][col].colorType === this.grid[row - 2][col].colorType) {
                     excluded.add(this.grid[row - 1][col].colorType);
                 }
-
-                const available = excluded.size > 0 
+                const available = excluded.size > 0
                     ? this.colors.filter(c => !excluded.has(c))
                     : this.colors;
                 const randomColor = Phaser.Math.RND.pick(available);
-
                 const pos = this.worldPos(row, col);
                 const tile = new Tile(this.scene, pos.x, pos.y, `tile_${randomColor}`, row, col);
                 this.add(tile);
@@ -69,8 +60,6 @@ export default class Board extends Phaser.GameObjects.Container {
 
     selectTile(tile) {
         if (this.isBusy) return;
-
-        // 規則：Rainbow 不能直接單點發動，必須進行交換
         if (tile.specialType !== 'none' && tile.specialType !== 'rainbow') {
             if (this.selectedTile) {
                 this.selectedTile.setSelected(false);
@@ -79,7 +68,6 @@ export default class Board extends Phaser.GameObjects.Container {
             this.triggerSingleSpecial(tile);
             return;
         }
-
         if (!this.selectedTile) {
             this.selectedTile = tile;
             tile.setSelected(true);
@@ -117,50 +105,38 @@ export default class Board extends Phaser.GameObjects.Container {
     swapTiles(tileA, tileB) {
         this.isBusy = true;
         this.comboCount = 1;
-
         const rA = tileA.row, cA = tileA.col;
         const rB = tileB.row, cB = tileB.col;
-
         this.grid[rA][cA] = tileB;
         this.grid[rB][cB] = tileA;
         tileA.row = rB; tileA.col = cB;
         tileB.row = rA; tileB.col = cA;
-
         const posA = this.worldPos(rA, cA);
         const posB = this.worldPos(rB, cB);
-
         this.scene.tweens.killTweensOf(tileA);
         this.scene.tweens.killTweensOf(tileB);
-
-        this.scene.tweens.add({ targets: tileA, x: posB.x, y: posB.y, duration: 250, ease: 'Back.easeOut' });
+        this.scene.tweens.add({ targets: tileA, x: posB.x, y: posB.y, duration: 200, ease: 'Back.easeOut' });
         this.scene.tweens.add({
-            targets: tileB, x: posA.x, y: posA.y, duration: 250, ease: 'Back.easeOut',
+            targets: tileB, x: posA.x, y: posA.y, duration: 200, ease: 'Back.easeOut',
             onComplete: () => {
                 const isSpecialA = tileA.specialType !== 'none';
                 const isSpecialB = tileB.specialType !== 'none';
-
                 if (isSpecialA || isSpecialB) {
                     this.handleSpecialCombo(tileA, tileB);
                     return;
                 }
-
                 const matchesResult = this.checkMatchesDetailed(tileA);
                 if (matchesResult.tiles.length > 0) {
-                    if (this.scene.moves !== undefined) {
-                        this.scene.moves--;
-                        if (this.scene.movesText) this.scene.movesText.setText(`Moves: ${this.scene.moves}`);
-                    }
+                    if (this.scene.onMoveUsed) this.scene.onMoveUsed();
                     this.clearMatches(matchesResult);
                 } else {
-                    // 修正 1：修復無效交換彈回時 tileB 的座標設定 Bug (cB 替代 cA)
                     this.grid[rA][cA] = tileA;
                     this.grid[rB][cB] = tileB;
                     tileA.row = rA; tileA.col = cA;
                     tileB.row = rB; tileB.col = cB;
-
-                    this.scene.tweens.add({ targets: tileA, x: posA.x, y: posA.y, duration: 200, ease: 'Power2' });
+                    this.scene.tweens.add({ targets: tileA, x: posA.x, y: posA.y, duration: 180, ease: 'Power2' });
                     this.scene.tweens.add({
-                        targets: tileB, x: posB.x, y: posB.y, duration: 200, ease: 'Power2',
+                        targets: tileB, x: posB.x, y: posB.y, duration: 180, ease: 'Power2',
                         onComplete: () => { this.isBusy = false; }
                     });
                 }
@@ -168,19 +144,12 @@ export default class Board extends Phaser.GameObjects.Container {
         });
     }
 
-    // ==========================================
-    // 🌟 特殊方塊組合邏輯 (Explicit Combo Handling)
-    // ==========================================
     handleSpecialCombo(tileA, tileB) {
-        if (this.scene.moves !== undefined) {
-            this.scene.moves--;
-            if (this.scene.movesText) this.scene.movesText.setText(`Moves: ${this.scene.moves}`);
-        }
+        if (this.scene.onMoveUsed) this.scene.onMoveUsed();
 
         const typeA = tileA.specialType;
         const typeB = tileB.specialType;
 
-        // 1. Rainbow + Rainbow (全盤清除)
         if (typeA === 'rainbow' && typeB === 'rainbow') {
             const allTiles = [];
             for (let r = 0; r < this.rows; r++) {
@@ -194,14 +163,11 @@ export default class Board extends Phaser.GameObjects.Container {
             return;
         }
 
-        // 2. Rainbow + Special / Normal
         if (typeA === 'rainbow' || typeB === 'rainbow') {
             const rainbowTile = typeA === 'rainbow' ? tileA : tileB;
             const otherTile = typeA === 'rainbow' ? tileB : tileA;
             const targetColor = otherTile.colorType;
-
             if (otherTile.specialType === 'none') {
-                // Rainbow + 普通色：清除全盤該顏色
                 const toClear = [rainbowTile];
                 for (let r = 0; r < this.rows; r++) {
                     for (let c = 0; c < this.cols; c++) {
@@ -213,10 +179,8 @@ export default class Board extends Phaser.GameObjects.Container {
                 this.flushShake();
                 this.clearMatches({ tiles: toClear, spawnSpecials: [] });
             } else {
-                // 修正 2 & 3：Rainbow + Rocket/Bomb 轉化與遞迴觸發連鎖
-                const targetSpecialType = otherTile.specialType; // 保留被交換道具的確切方向（如 row_rocket / col_rocket / bomb）
+                const targetSpecialType = otherTile.specialType;
                 const convertedSpecials = [];
-
                 for (let r = 0; r < this.rows; r++) {
                     for (let c = 0; c < this.cols; c++) {
                         const t = this.grid[r][c];
@@ -226,78 +190,62 @@ export default class Board extends Phaser.GameObjects.Container {
                         }
                     }
                 }
-
-                // 逐個觸發連鎖效應
                 const expanded = new Set([rainbowTile, otherTile, ...convertedSpecials]);
                 const processedSpecials = new Set();
                 convertedSpecials.forEach(sp => this.expandSpecialEffect(sp, expanded, processedSpecials));
-                
+
                 this.flushShake();
                 this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
             }
             return;
         }
 
-        // 3. Rocket + Rocket (十字爆破：交換位置所在的整行 + 整列)
         const isRocketA = typeA === 'row_rocket' || typeA === 'col_rocket';
         const isRocketB = typeB === 'row_rocket' || typeB === 'col_rocket';
-
         if (isRocketA && isRocketB) {
             const expanded = new Set([tileA, tileB]);
             const centerRow = tileB.row;
             const centerCol = tileB.col;
-
             this.createRocketBeam(tileB.x, tileB.y, true);
             this.createRocketBeam(tileB.x, tileB.y, false);
             this.queueShake(300, 0.03);
-
             for (let c = 0; c < this.cols; c++) if (this.grid[centerRow][c]) expanded.add(this.grid[centerRow][c]);
             for (let r = 0; r < this.rows; r++) if (this.grid[r][centerCol]) expanded.add(this.grid[r][centerCol]);
-
             this.flushShake();
             this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
             return;
         }
 
-        // 4. Rocket + Bomb (3 行 + 3 列交叉爆破)
         const isBombA = typeA === 'bomb';
         const isBombB = typeB === 'bomb';
-
         if ((isRocketA && isBombB) || (isBombA && isRocketB)) {
             const expanded = new Set([tileA, tileB]);
             const centerRow = tileB.row;
             const centerCol = tileB.col;
-
             this.createShockwave(tileB.x, tileB.y);
             this.queueShake(400, 0.04);
-
             for (let r = Math.max(0, centerRow - 1); r <= Math.min(this.rows - 1, centerRow + 1); r++) {
                 for (let c = 0; c < this.cols; c++) if (this.grid[r][c]) expanded.add(this.grid[r][c]);
             }
             for (let c = Math.max(0, centerCol - 1); c <= Math.min(this.cols - 1, centerCol + 1); c++) {
                 for (let r = 0; r < this.rows; r++) if (this.grid[r][c]) expanded.add(this.grid[r][c]);
             }
-
             this.flushShake();
             this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
             return;
         }
 
-        // 5. Bomb + Bomb (5x5 區域爆破)
         if (isBombA && isBombB) {
             const expanded = new Set([tileA, tileB]);
             const centerRow = tileB.row;
             const centerCol = tileB.col;
-
             this.createShockwave(tileB.x, tileB.y);
             this.queueShake(500, 0.05);
-
             for (let r = Math.max(0, centerRow - 2); r <= Math.min(this.rows - 1, centerRow + 2); r++) {
                 for (let c = Math.max(0, centerCol - 2); c <= Math.min(this.cols - 1, centerCol + 2); c++) {
                     if (this.grid[r][c]) expanded.add(this.grid[r][c]);
                 }
             }
-
             this.flushShake();
             this.clearMatches({ tiles: Array.from(expanded), spawnSpecials: [] });
             return;
@@ -315,7 +263,6 @@ export default class Board extends Phaser.GameObjects.Container {
     expandSpecialEffect(tile, expandedSet, processedSpecials) {
         if (!tile || processedSpecials.has(tile)) return;
         processedSpecials.add(tile);
-
         if (tile.specialType === 'row_rocket') {
             this.createRocketBeam(tile.x, tile.y, true);
             this.queueShake(200, 0.02);
@@ -360,14 +307,12 @@ export default class Board extends Phaser.GameObjects.Container {
     checkMatchesDetailed(activeSwappedTile = null) {
         const hMatches = [];
         const vMatches = [];
-
         for (let r = 0; r < this.rows; r++) {
             let matchLen = 1;
             for (let c = 0; c < this.cols; c++) {
                 const cur = this.grid[r][c];
                 const next = c < this.cols - 1 ? this.grid[r][c + 1] : null;
                 const checkNext = next && cur && (cur.colorType === next.colorType) && cur.colorType !== 'rainbow';
-
                 if (checkNext) {
                     matchLen++;
                 } else {
@@ -380,14 +325,12 @@ export default class Board extends Phaser.GameObjects.Container {
                 }
             }
         }
-
         for (let c = 0; c < this.cols; c++) {
             let matchLen = 1;
             for (let r = 0; r < this.rows; r++) {
                 const cur = this.grid[r][c];
                 const next = r < this.rows - 1 ? this.grid[r + 1][c] : null;
                 const checkNext = next && cur && (cur.colorType === next.colorType) && cur.colorType !== 'rainbow';
-
                 if (checkNext) {
                     matchLen++;
                 } else {
@@ -400,15 +343,13 @@ export default class Board extends Phaser.GameObjects.Container {
                 }
             }
         }
-
         const matchedTilesSet = new Set();
         const spawnGridMap = new Map();
-
         const PRIORITY = { rainbow: 3, bomb: 2, rocket: 1 };
         const registerSpawn = (tile, type, color) => {
             const key = `${tile.row}_${tile.col}`;
             const pNew = PRIORITY[type.includes('rocket') ? 'rocket' : type];
-            
+
             if (spawnGridMap.has(key)) {
                 const existing = spawnGridMap.get(key);
                 const pOld = PRIORITY[existing.type.includes('rocket') ? 'rocket' : existing.type];
@@ -419,14 +360,12 @@ export default class Board extends Phaser.GameObjects.Container {
                 spawnGridMap.set(key, { row: tile.row, col: tile.col, type, color });
             }
         };
-
         const pickSpawnTile = (line) => {
             if (activeSwappedTile && line.includes(activeSwappedTile)) {
                 return activeSwappedTile;
             }
             return line[Math.floor(line.length / 2)];
         };
-
         hMatches.forEach(h => {
             h.line.forEach(t => matchedTilesSet.add(t));
             if (h.length >= 5) registerSpawn(pickSpawnTile(h.line), 'rainbow', 'rainbow');
@@ -435,7 +374,6 @@ export default class Board extends Phaser.GameObjects.Container {
             v.line.forEach(t => matchedTilesSet.add(t));
             if (v.length >= 5) registerSpawn(pickSpawnTile(v.line), 'rainbow', 'rainbow');
         });
-
         hMatches.forEach(h => {
             vMatches.forEach(v => {
                 if (h.color === v.color) {
@@ -443,16 +381,13 @@ export default class Board extends Phaser.GameObjects.Container {
                     if (intersection) {
                         const r = intersection.row;
                         const c = intersection.col;
-
                         const sameColor = (tile) => tile && tile.colorType === h.color && tile.colorType !== 'rainbow';
                         const hasLeft = c > 0 && sameColor(this.grid[r][c - 1]);
                         const hasRight = c < this.cols - 1 && sameColor(this.grid[r][c + 1]);
                         const hasUp = r > 0 && sameColor(this.grid[r - 1][c]);
                         const hasDown = r < this.rows - 1 && sameColor(this.grid[r + 1][c]);
-
                         const isTShape = (hasLeft && hasRight && hasDown) || (hasLeft && hasRight && hasUp) || (hasUp && hasDown && hasLeft) || (hasUp && hasDown && hasRight);
-                        const isLShape = (hasRight && hasDown) || (hasRight && hasUp) || (hasLeft && hasDown) || (hasLeft && hasLeft);
-
+                        const isLShape = (hasRight && hasDown) || (hasRight && hasUp) || (hasLeft && hasDown) || (hasLeft && hasUp);
                         if (isTShape || isLShape) {
                             registerSpawn(intersection, 'bomb', h.color);
                         }
@@ -460,18 +395,16 @@ export default class Board extends Phaser.GameObjects.Container {
                 }
             });
         });
-
         hMatches.forEach(h => {
             if (h.length === 4) registerSpawn(pickSpawnTile(h.line), 'col_rocket', h.color);
         });
         vMatches.forEach(v => {
             if (v.length === 4) registerSpawn(pickSpawnTile(v.line), 'row_rocket', v.color);
         });
-
         const expanded = new Set(matchedTilesSet);
-        matchedTilesSet.forEach(tile => this.expandSpecialEffect(tile, expanded, new Set()));
+        const sharedProcessed = new Set();
+        matchedTilesSet.forEach(tile => this.expandSpecialEffect(tile, expanded, sharedProcessed));
         this.flushShake();
-
         return { tiles: Array.from(expanded), spawnSpecials: Array.from(spawnGridMap.values()) };
     }
 
@@ -482,18 +415,23 @@ export default class Board extends Phaser.GameObjects.Container {
             return;
         }
 
-        if (this.scene.score !== undefined) {
-            const scoreGain = matches.length * 10 * this.comboCount;
-            this.scene.score += scoreGain;
-            if (this.scene.scoreText) this.scene.scoreText.setText(`Score: ${this.scene.score}`);
-        }
+        let cx = 0, cy = 0;
+        matches.forEach(t => { cx += t.x; cy += t.y; });
+        cx /= matches.length; cy /= matches.length;
 
-        matches.forEach(tile => {
+        const scoreGain = matches.length * 10 * this.comboCount;
+        if (this.scene.updateScore) this.scene.updateScore(scoreGain);
+        this.showFloatingScore(cx, cy, scoreGain);
+
+        matches.forEach((tile, i) => {
             this.grid[tile.row][tile.col] = null;
             this.scene.tweens.add({
                 targets: tile,
                 scaleX: 0, scaleY: 0, alpha: 0,
-                duration: 200, ease: 'Power2',
+                angle: Phaser.Math.Between(-90, 90),
+                duration: 200,
+                delay: Math.min(i * 8, 120),
+                ease: 'Back.easeIn',
                 onComplete: () => tile.destroy()
             });
         });
@@ -507,7 +445,6 @@ export default class Board extends Phaser.GameObjects.Container {
                     newTile.setScale(0);
                     this.add(newTile);
                     this.grid[sp.row][sp.col] = newTile;
-
                     this.scene.tweens.add({
                         targets: newTile,
                         scaleX: newTile.baseScale, scaleY: newTile.baseScale,
@@ -521,7 +458,6 @@ export default class Board extends Phaser.GameObjects.Container {
 
     dropAndRefill() {
         const dropTweens = [];
-
         for (let col = 0; col < this.cols; col++) {
             let emptySlots = 0;
             for (let row = this.rows - 1; row >= 0; row--) {
@@ -530,30 +466,24 @@ export default class Board extends Phaser.GameObjects.Container {
                 } else if (emptySlots > 0) {
                     const tile = this.grid[row][col];
                     const targetRow = row + emptySlots;
-
                     this.grid[targetRow][col] = tile;
                     this.grid[row][col] = null;
                     tile.row = targetRow;
-
                     const targetPos = this.worldPos(targetRow, col);
-                    dropTweens.push({ targets: tile, y: targetPos.y, duration: 300, ease: 'Bounce.easeOut' });
+                    dropTweens.push({ targets: tile, y: targetPos.y, duration: 280, ease: 'Bounce.easeOut' });
                 }
             }
-
             for (let i = 0; i < emptySlots; i++) {
                 const targetRow = emptySlots - 1 - i;
                 const randomColor = Phaser.Math.RND.pick(this.colors);
                 const pos = this.worldPos(targetRow, col);
                 const startY = pos.y - (emptySlots * 70);
-
                 const tile = new Tile(this.scene, pos.x, startY, `tile_${randomColor}`, targetRow, col);
                 this.add(tile);
                 this.grid[targetRow][col] = tile;
-
-                dropTweens.push({ targets: tile, y: pos.y, duration: 350 + (i * 40), ease: 'Bounce.easeOut' });
+                dropTweens.push({ targets: tile, y: pos.y, duration: 320 + (i * 35), ease: 'Bounce.easeOut' });
             }
         }
-
         if (dropTweens.length > 0) {
             let completed = 0;
             dropTweens.forEach(config => {
@@ -562,7 +492,7 @@ export default class Board extends Phaser.GameObjects.Container {
                     onComplete: () => {
                         completed++;
                         if (completed === dropTweens.length) {
-                            this.scene.time.delayedCall(150, () => {
+                            this.scene.time.delayedCall(120, () => {
                                 const newMatches = this.checkMatchesDetailed();
                                 if (newMatches.tiles.length > 0) {
                                     this.comboCount++;
@@ -587,7 +517,6 @@ export default class Board extends Phaser.GameObjects.Container {
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols; c++) {
                 if (this.grid[r][c] && this.grid[r][c].specialType !== 'none') return true;
-
                 if (c < this.cols - 1) {
                     if (this.testSwapHasMatch(r, c, r, c + 1)) return true;
                 }
@@ -603,23 +532,20 @@ export default class Board extends Phaser.GameObjects.Container {
         const t1 = this.grid[r1][c1];
         const t2 = this.grid[r2][c2];
         if (!t1 || !t2) return false;
-
         this.grid[r1][c1] = t2;
         this.grid[r2][c2] = t1;
-
         let hasMatch = false;
         for (let r = 0; r < this.rows; r++) {
             for (let c = 0; c < this.cols - 2; c++) {
-                if (this.grid[r][c] && this.grid[r][c+1] && this.grid[r][c+2]) {
-                    if (this.grid[r][c].colorType === this.grid[r][c+1].colorType &&
-                        this.grid[r][c].colorType === this.grid[r][c+2].colorType) {
+                if (this.grid[r][c] && this.grid[r][c + 1] && this.grid[r][c + 2]) {
+                    if (this.grid[r][c].colorType === this.grid[r][c + 1].colorType &&
+                        this.grid[r][c].colorType === this.grid[r][c + 2].colorType) {
                         hasMatch = true; break;
                     }
                 }
             }
             if (hasMatch) break;
         }
-
         this.grid[r1][c1] = t1;
         this.grid[r2][c2] = t2;
         return hasMatch;
@@ -632,7 +558,6 @@ export default class Board extends Phaser.GameObjects.Container {
                 if (this.grid[r][c]) allTiles.push(this.grid[r][c]);
             }
         }
-
         Phaser.Utils.Array.Shuffle(allTiles);
         let idx = 0;
         for (let r = 0; r < this.rows; r++) {
@@ -660,24 +585,87 @@ export default class Board extends Phaser.GameObjects.Container {
         }
     }
 
+    showFloatingScore(x, y, amount) {
+        let obj = this.scoreTextPool.find(o => !o.getData('active'));
+        if (!obj) {
+            obj = this.scene.add.text(0, 0, '', {
+                fontSize: '26px',
+                fontStyle: 'bold',
+                color: '#FFD700',
+                stroke: '#5A3311',
+                strokeThickness: 4
+            }).setOrigin(0.5).setDepth(50);
+            this.add(obj);
+            this.scoreTextPool.push(obj);
+        }
+        obj.setData('active', true);
+        obj.setText(`+${amount}`);
+        obj.setPosition(x, y);
+        obj.setAlpha(1);
+        obj.setScale(0.5);
+        obj.setVisible(true);
+        this.scene.tweens.killTweensOf(obj);
+        this.scene.tweens.add({
+            targets: obj,
+            y: y - 55,
+            alpha: 0,
+            scale: 1.15,
+            duration: 650,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                obj.setData('active', false);
+                obj.setVisible(false);
+            }
+        });
+    }
+
     createRocketBeam(x, y, isRow) {
-        const beam = this.scene.add.rectangle(x, y, isRow ? 800 : 20, isRow ? 20 : 800, 0xffffff, 1);
-        this.add(beam);
+        const pool = isRow ? this.rowBeamPool : this.colBeamPool;
+        let beam = pool.find(o => !o.getData('active'));
+        if (!beam) {
+            beam = this.scene.add.rectangle(0, 0, isRow ? 800 : 20, isRow ? 20 : 800, 0xffffff, 1);
+            this.add(beam);
+            pool.push(beam);
+        }
+        beam.setData('active', true);
+        beam.setPosition(x, y);
+        beam.setAlpha(1);
+        beam.setVisible(true);
+        this.scene.tweens.killTweensOf(beam);
         this.scene.tweens.add({
             targets: beam,
-            alpha: 0, duration: 300,
-            onComplete: () => beam.destroy()
+            alpha: 0,
+            duration: 300,
+            onComplete: () => {
+                beam.setData('active', false);
+                beam.setVisible(false);
+            }
         });
     }
 
     createShockwave(x, y) {
-        const wave = this.scene.add.circle(x, y, 30, 0xffaa00, 1);
-        this.add(wave);
+        let wave = this.wavePool.find(o => !o.getData('active'));
+        if (!wave) {
+            wave = this.scene.add.circle(0, 0, 30, 0xffaa00, 1);
+            this.add(wave);
+            this.wavePool.push(wave);
+        }
+        wave.setData('active', true);
+        wave.setPosition(x, y);
+        wave.setScale(1);
+        wave.setAlpha(1);
+        wave.setVisible(true);
+        this.scene.tweens.killTweensOf(wave);
         this.scene.tweens.add({
             targets: wave,
-            scale: 8, alpha: 0,
-            duration: 500, ease: 'Sine.easeOut',
-            onComplete: () => wave.destroy()
+            scale: 8,
+            alpha: 0,
+            duration: 500,
+            ease: 'Sine.easeOut',
+            onComplete: () => {
+                wave.setData('active', false);
+                wave.setVisible(false);
+            }
         });
     }
 }
