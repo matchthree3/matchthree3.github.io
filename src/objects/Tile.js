@@ -8,8 +8,12 @@ export default class Tile extends Phaser.GameObjects.Sprite {
         this.row = row;
         this.col = col;
         this.colorType = texture.replace('tile_', '');
-        this.specialType = 'none'; // 'none', 'row_rocket', 'col_rocket', 'bomb', 'rainbow'
-        this.baseScale = 1;
+        this.specialType = 'none';
+
+        // 強制根據 64px 限制縮放，防止大圖爆開
+        const targetSize = 64;
+        this.baseScale = targetSize / Math.max(this.width, this.height);
+        this.setScale(this.baseScale);
 
         this.setInteractive();
         this.scene.input.setDraggable(this);
@@ -25,32 +29,33 @@ export default class Tile extends Phaser.GameObjects.Sprite {
 
         if (type === 'row_rocket' || type === 'col_rocket') {
             this.setTexture('tile_rocket');
-            // row_rocket (水平貫穿): 旋轉 90 度讓直立圖案平躺
-            // col_rocket (垂直貫穿): 保持 0 度直立
-            if (type === 'row_rocket') {
-                this.setAngle(90);
-            } else {
-                this.setAngle(0);
-            }
+            // 上傳直立圖片時：row_rocket (橫爆) 轉 90 度，col_rocket (直爆) 轉 0 度
+            this.setAngle(type === 'row_rocket' ? 90 : 0);
         } else if (type === 'bomb') {
             this.setTexture('tile_bomb');
+            this.setAngle(0);
         } else if (type === 'rainbow') {
             this.setTexture('tile_rainbow');
             this.colorType = 'rainbow';
+            this.setAngle(0);
         }
 
-        const maxDim = Math.max(this.width, this.height);
-        this.baseScale = (64 / maxDim) * (type === 'none' ? 1 : 1.15);
+        const targetSize = 64;
+        this.baseScale = (targetSize / Math.max(this.width, this.height)) * (type === 'none' ? 1 : 1.1);
         this.setScale(this.baseScale);
     }
 
     onPointerDown() {
-        this.scene.board.selectTile(this);
+        if (this.scene.board && !this.scene.board.isBusy) {
+            this.scene.board.selectTile(this);
+        }
     }
 
     onDragStart(pointer) {
-        this.dragStartX = pointer.x;
-        this.dragStartY = pointer.y;
+        if (this.scene.board && !this.scene.board.isBusy) {
+            this.dragStartX = pointer.x;
+            this.dragStartY = pointer.y;
+        }
     }
 
     onDragEnd(pointer) {
