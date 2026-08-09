@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
 import UIHelper from '../utils/UIHelper.js';
+import LevelConfig from '../config/LevelConfig.js';
+
+const VISIBLE_LEVEL_COUNT = 20;
 
 export default class MenuScene extends Phaser.Scene {
     constructor() {
@@ -9,16 +12,16 @@ export default class MenuScene extends Phaser.Scene {
     create() {
         const { width, height } = this.scale;
 
-        // 1. 夢幻藍紫天空漸層背景
         const bg = this.add.graphics();
         bg.fillGradientStyle(0x3B82F6, 0x3B82F6, 0x6366F1, 0x8B5CF6, 1);
         bg.fillRect(0, 0, width, height);
+        bg.setScrollFactor(0);
 
-        // 背景動態雲朵層
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 6; i++) {
             const cloudX = Phaser.Math.Between(40, width - 40);
             const cloudY = Phaser.Math.Between(60, height - 80);
             const cloud = this.add.circle(cloudX, cloudY, Phaser.Math.Between(35, 60), 0xFFFFFF, 0.2);
+            cloud.setScrollFactor(0);
             this.tweens.add({
                 targets: cloud,
                 x: cloudX + 25,
@@ -29,14 +32,13 @@ export default class MenuScene extends Phaser.Scene {
             });
         }
 
-        // 2. 雙層 Logo / 品牌標題
         const subTitle = this.add.text(width / 2, 45, '✦ CANDY VALLEY ✦', {
             fontSize: '16px',
             fontStyle: 'bold',
             color: '#FFEAA7',
             stroke: '#2D3436',
             strokeThickness: 3
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
 
         const logoMain = this.add.text(width / 2, 80, 'SWEET\nMATCH', {
             fontSize: '34px',
@@ -46,7 +48,7 @@ export default class MenuScene extends Phaser.Scene {
             stroke: '#5A3311',
             strokeThickness: 8,
             shadow: { offsetX: 0, offsetY: 6, color: '#000000', blur: 6, fill: true }
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(20);
 
         this.tweens.add({
             targets: [subTitle, logoMain],
@@ -57,53 +59,54 @@ export default class MenuScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // 3. 關卡資料與垂直間距拉開（解決擠在一起的核心修復點）
         const savedProgress = JSON.parse(localStorage.getItem('match3_progress') || '{}');
-        
-        // 將 y 軸間距拉寬（涵蓋從 height * 0.81 到 height * 0.20），並做 S 型交錯
-        const levels = [
-            { id: 1, name: '第一關', target: 500, moves: 20, x: width * 0.28, y: height * 0.81 },
-            { id: 2, name: '第二關', target: 1000, moves: 18, x: width * 0.72, y: height * 0.66 },
-            { id: 3, name: '第三關', target: 1800, moves: 15, x: width * 0.30, y: height * 0.51 },
-            { id: 4, name: '第四關', target: 2500, moves: 15, x: width * 0.70, y: height * 0.36 },
-            { id: 5, name: '第五關', target: 3500, moves: 12, x: width * 0.50, y: height * 0.20 }
-        ];
+        const maxUnlocked = savedProgress.maxUnlocked || 1;
 
-        // 4. 繪製有立體厚度與土木質感的「冒險小徑 (Adventure Road Path)」
+        const rawLevels = LevelConfig.getLevelRange(1, VISIBLE_LEVEL_COUNT);
+        const marginTop = 160;
+        const marginBottom = 120;
+        const stepY = 110;
+        const contentHeight = marginTop + marginBottom + stepY * (rawLevels.length - 1);
+
+        const levels = rawLevels.map((lvl, i) => {
+            const swing = Math.sin(i * 0.9) * (width * 0.22);
+            return {
+                ...lvl,
+                x: width / 2 + swing,
+                y: contentHeight - marginBottom - i * stepY,
+                isCurrent: lvl.id === maxUnlocked
+            };
+        });
+
+        const world = this.add.container(0, 0);
+        const currentLvl = levels.find(l => l.isCurrent) || levels[0];
+        const minScrollY = Math.min(0, height - contentHeight);
+        let startOffset = Phaser.Math.Clamp(-(currentLvl.y - height * 0.6), minScrollY, 0);
+        world.y = startOffset;
+
         const pathGfx = this.add.graphics();
-        
-        // 4a. 道路深色邊緣陰影
         pathGfx.lineStyle(18, 0x3E2723, 0.4);
         pathGfx.beginPath();
         pathGfx.moveTo(levels[0].x, levels[0].y + 4);
-        for (let i = 1; i < levels.length; i++) {
-            pathGfx.lineTo(levels[i].x, levels[i].y + 4);
-        }
+        for (let i = 1; i < levels.length; i++) pathGfx.lineTo(levels[i].x, levels[i].y + 4);
         pathGfx.strokePath();
 
-        // 4b. 道路土木質感主體
         pathGfx.lineStyle(12, 0x8D6E63, 0.9);
         pathGfx.beginPath();
         pathGfx.moveTo(levels[0].x, levels[0].y);
-        for (let i = 1; i < levels.length; i++) {
-            pathGfx.lineTo(levels[i].x, levels[i].y);
-        }
+        for (let i = 1; i < levels.length; i++) pathGfx.lineTo(levels[i].x, levels[i].y);
         pathGfx.strokePath();
 
-        // 4c. 道路中心黃色虛線
         pathGfx.lineStyle(3, 0xFFECB3, 0.8);
         pathGfx.beginPath();
         pathGfx.moveTo(levels[0].x, levels[0].y);
-        for (let i = 1; i < levels.length; i++) {
-            pathGfx.lineTo(levels[i].x, levels[i].y);
-        }
+        for (let i = 1; i < levels.length; i++) pathGfx.lineTo(levels[i].x, levels[i].y);
         pathGfx.strokePath();
+        world.add(pathGfx);
 
-        // 5. 終點頂部城堡地標 (Castle Destination)
-        const castleMarker = this.add.text(levels[4].x, levels[4].y - 60, '🏰', {
-            fontSize: '38px'
-        }).setOrigin(0.5);
-
+        const lastLvl = levels[levels.length - 1];
+        const castleMarker = this.add.text(lastLvl.x, lastLvl.y - 60, '🏰', { fontSize: '38px' }).setOrigin(0.5);
+        world.add(castleMarker);
         this.tweens.add({
             targets: castleMarker,
             scale: 1.1,
@@ -113,20 +116,23 @@ export default class MenuScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
         });
 
-        // 6. 生成關卡節點 (Level Nodes)
-        let maxUnlocked = savedProgress.maxUnlocked || 1;
-
         levels.forEach((lvl) => {
             const isUnlocked = lvl.id <= maxUnlocked;
-            lvl.isCurrent = lvl.id === maxUnlocked;
             const stars = savedProgress[`level_${lvl.id}_stars`] || 0;
-
-            UIHelper.createLevelNode(this, lvl.x, lvl.y, lvl, isUnlocked, stars, () => {
+            const node = UIHelper.createLevelNode(this, lvl.x, lvl.y, lvl, isUnlocked, stars, () => {
                 this.scene.start('GameScene', lvl);
             });
+            world.add(node);
         });
 
-        // 7. 底部醒目「▶ 繼續挑戰」主要控制按鈕
+        this.input.on('pointermove', (pointer) => {
+            if (!pointer.isDown) return;
+            world.y = Phaser.Math.Clamp(world.y + pointer.velocity.y * 0.016, minScrollY - 40, 40);
+        });
+        this.input.on('wheel', (pointer, gameObjects, dx, dy) => {
+            world.y = Phaser.Math.Clamp(world.y - dy * 0.5, minScrollY - 40, 40);
+        });
+
         const currentLevel = levels.find(l => l.id === maxUnlocked) || levels[0];
         UIHelper.createButton(
             this,
@@ -141,6 +147,6 @@ export default class MenuScene extends Phaser.Scene {
             () => {
                 this.scene.start('GameScene', currentLevel);
             }
-        );
+        ).setScrollFactor(0).setDepth(30);
     }
 }
